@@ -1,357 +1,496 @@
-#' List Allocation Mode Types
+utils::globalVariables(
+  c(
+    "allocation_mode_types",
+    "analog_types",
+    "area_types",
+    "asset_types",
+    "auction_types",
+    "business_types",
+    "category_types",
+    "classification_types",
+    "coding_scheme_types",
+    "connection_category_types",
+    "contract_types",
+    "coordinate_system_types",
+    "currency_types",
+    "curve_types",
+    "customer_types",
+    "direction_types",
+    "document_types",
+    "eic_types",
+    "energy_product_types",
+    "flow_commodity_option_types",
+    "fuel_types",
+    "grid_agreement_types",
+    "hvdc_mode_types",
+    "indicator_types",
+    "market_product_types",
+    "message_types",
+    "object_aggregation_types",
+    "payment_terms_types",
+    "price_category_types",
+    "price_component_types",
+    "price_direction_types",
+    "process_types",
+    "quality_types",
+    "reason_code_types",
+    "rights_types",
+    "role_types",
+    "settlement_method_types",
+    "status_types",
+    "sub_area_types",
+    "tariff_types",
+    "timeframe_types",
+    "transmission_pair_eic_dict",
+    "unit_multiplier",
+    "unit_of_measure_types",
+    "unit_symbol_types"
+  )
+)
+
+#' @title
+#' List allocation mode types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
-#'
-#' library(entsoeapi)
-#'
-#' str(allocation_mode_types)
+#' dplyr::glimpse(entsoeapi::allocation_mode_types)
 #'
 "allocation_mode_types"
 
 
-
-#' List Asset Types
+#' @title
+#' List asset types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
-#'
-#' library(entsoeapi)
-#'
-#' str(asset_types)
+#' dplyr::glimpse(entsoeapi::asset_types)
 #'
 "asset_types"
 
 
-
-#' List Auction Types
+#' @title
+#' List auction types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
-#'
-#' library(entsoeapi)
-#'
-#' str(auction_types)
+#' dplyr::glimpse(entsoeapi::auction_types)
 #'
 "auction_types"
 
 
-
-#' List Business Types
-#'
+#' @title
+#' List business types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #' @examples
-#'
-#' library(entsoeapi)
-#'
-#' str(business_types)
+#' dplyr::glimpse(entsoeapi::business_types)
 #'
 "business_types"
 
 
-
-#' List Category Types
+#' @title
+#' List category types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
-#'
-#' library(entsoeapi)
-#'
-#' str(category_types)
+#' dplyr::glimpse(entsoeapi::category_types)
 #'
 "category_types"
 
 
-
-#' List Classification Types
+#' @title
+#' List classification types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
-#'
-#' library(entsoeapi)
-#'
-#' str(classification_types)
+#' dplyr::glimpse(entsoeapi::classification_types)
 #'
 "classification_types"
 
 
-
-#' List Coding Scheme Types
+#' @title
+#' List coding scheme types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
-#'
-#' library(entsoeapi)
-#'
-#' str(coding_scheme_types)
+#' dplyr::glimpse(entsoeapi::coding_scheme_types)
 #'
 "coding_scheme_types"
 
 
-
-#' List Contract Types
+#' @title
+#' List connection category types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
+#' dplyr::glimpse(entsoeapi::connection_category_types)
 #'
-#' library(entsoeapi)
+"connection_category_types"
+
+
+#' @title
+#' List contract types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
-#' str(contract_types)
+#' @examples
+#' dplyr::glimpse(entsoeapi::contract_types)
 #'
 "contract_types"
 
 
-
-#' List Currency Types
+#' @title
+#' List currency types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
-#'
-#' library(entsoeapi)
-#'
-#' str(currency_types)
+#' dplyr::glimpse(entsoeapi::currency_types)
 #'
 "currency_types"
 
 
-
-#' List Curve Types
+#' @title
+#' List curve types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
-#'
-#' library(entsoeapi)
-#'
-#' str(curve_types)
+#' dplyr::glimpse(entsoeapi::curve_types)
 #'
 "curve_types"
 
 
-
-#' List Direction Types
+#' @title
+#' List customer types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
+#' dplyr::glimpse(entsoeapi::customer_types)
 #'
-#' library(entsoeapi)
+"customer_types"
+
+
+#' @title
+#' List direction types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
-#' str(direction_types)
+#' @examples
+#' dplyr::glimpse(entsoeapi::direction_types)
 #'
 "direction_types"
 
 
-
-#' List Document Types
+#' @title
+#' List document types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
-#'
-#' library(entsoeapi)
-#'
-#' str(document_types)
+#' dplyr::glimpse(entsoeapi::document_types)
 #'
 "document_types"
 
 
-
-#' List EIC Types
+#' @title
+#' List message types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
+#' dplyr::glimpse(entsoeapi::message_types)
 #'
-#' library(entsoeapi)
+"message_types"
+
+
+#' @title
+#' List EIC types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
-#' str(eic_types)
+#' @examples
+#' dplyr::glimpse(entsoeapi::eic_types)
 #'
 "eic_types"
 
 
-
-#' List Energy Product Types
+#' @title
+#' List energy product types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
-#'
-#' library(entsoeapi)
-#'
-#' str(energy_product_types)
+#' dplyr::glimpse(entsoeapi::energy_product_types)
 #'
 "energy_product_types"
 
 
-
-#' List HVDC Mode Types
+#' @title
+#' List flow commodity types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
+#' dplyr::glimpse(entsoeapi::flow_commodity_option_types)
 #'
-#' library(entsoeapi)
+"flow_commodity_option_types"
+
+
+#' @title
+#' List grid agreement types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
-#' str(hvdc_mode_types)
+#' @examples
+#' dplyr::glimpse(entsoeapi::grid_agreement_types)
+#'
+"grid_agreement_types"
+
+
+#' @title
+#' List HVDC mode types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
+#'
+#' @examples
+#' dplyr::glimpse(entsoeapi::hvdc_mode_types)
 #'
 "hvdc_mode_types"
 
 
-
-#' List Indicator Types
+#' @title
+#' List indicator types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
-#'
-#' library(entsoeapi)
-#'
-#' str(indicator_types)
+#' dplyr::glimpse(entsoeapi::indicator_types)
 #'
 "indicator_types"
 
 
-
-#' List Object Aggregation Types
+#' @title
+#' List object aggregation types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
-#'
-#' library(entsoeapi)
-#'
-#' str(object_aggregation_types)
+#' dplyr::glimpse(entsoeapi::object_aggregation_types)
 #'
 "object_aggregation_types"
 
 
-
-#' List Payment Terms Types
+#' @title
+#' List payment terms types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
-#'
-#' library(entsoeapi)
-#'
-#' str(payment_terms_types)
+#' dplyr::glimpse(entsoeapi::payment_terms_types)
 #'
 "payment_terms_types"
 
 
-
-#' List Price Category Types
+#' @title
+#' List price category types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
-#'
-#' library(entsoeapi)
-#'
-#' str(price_category_types)
+#' dplyr::glimpse(entsoeapi::price_category_types)
 #'
 "price_category_types"
 
 
-
-#' List Price Direction Types
+#' @title
+#' List price direction types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
-#'
-#' library(entsoeapi)
-#'
-#' str(price_direction_types)
+#' dplyr::glimpse(entsoeapi::price_direction_types)
 #'
 "price_direction_types"
 
 
-
-#' List Process Types
+#' @title
+#' List process types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
-#'
-#' library(entsoeapi)
-#'
-#' str(process_types)
+#' dplyr::glimpse(entsoeapi::process_types)
 #'
 "process_types"
 
 
-
-#' List Quality Types
+#' @title
+#' List quality types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
-#'
-#' library(entsoeapi)
-#'
-#' str(quality_types)
+#' dplyr::glimpse(entsoeapi::quality_types)
 #'
 "quality_types"
 
 
-
-#' List Reason Code Types
+#' @title
+#' List reason code types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
-#'
-#' library(entsoeapi)
-#'
-#' str(reason_code_types)
+#' dplyr::glimpse(entsoeapi::reason_code_types)
 #'
 "reason_code_types"
 
 
-
-#' List Rights Types
+#' @title
+#' List rights types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
-#'
-#' library(entsoeapi)
-#'
-#' str(rights_types)
+#' dplyr::glimpse(entsoeapi::rights_types)
 #'
 "rights_types"
 
 
-
-#' List Role Types
+#' @title
+#' List role types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
-#'
-#' library(entsoeapi)
-#'
-#' str(role_types)
+#' dplyr::glimpse(entsoeapi::role_types)
 #'
 "role_types"
 
 
-
-#' List Status Types
+#' @title
+#' List settlement method types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
+#' dplyr::glimpse(entsoeapi::settlement_method_types)
 #'
-#' library(entsoeapi)
+"settlement_method_types"
+
+
+#' @title
+#' List status types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
-#' str(status_types)
+#' @examples
+#' dplyr::glimpse(entsoeapi::status_types)
 #'
 "status_types"
 
 
-
-#' List Tariff Types
+#' @title
+#' List sub-area types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
+#' dplyr::glimpse(entsoeapi::sub_area_types)
 #'
-#' library(entsoeapi)
+"sub_area_types"
+
+
+#' @title
+#' List tariff types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
-#' str(tariff_types)
+#' @examples
+#' dplyr::glimpse(entsoeapi::tariff_types)
 #'
 "tariff_types"
 
 
-
-#' List Unit of Measure Types
+#' @title
+#' List unit of measure types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
-#'
-#' library(entsoeapi)
-#'
-#' str(unit_of_measure_types)
+#' dplyr::glimpse(entsoeapi::unit_of_measure_types)
 #'
 "unit_of_measure_types"
 
 
-
-#' List Unit Symbol Types
+#' @title
+#' List unit symbol types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 #'
 #' @examples
-#'
-#' library(entsoeapi)
-#'
-#' str(unit_symbol_types)
+#' dplyr::glimpse(entsoeapi::unit_symbol_types)
 #'
 "unit_symbol_types"
 
 
-
-#' List Transmission Pair EIC Dictionary
+#' @title
+#' List transmission pair EIC Dictionary
 #'
 #' @examples
-#'
-#' library(entsoeapi)
-#'
-#' str(transmission_pair_eic_dict)
+#' dplyr::glimpse(entsoeapi::transmission_pair_eic_dict)
 #'
 "transmission_pair_eic_dict"
+
+
+#' @title
+#' List analog types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
+#'
+#' @examples
+#' dplyr::glimpse(entsoeapi::analog_types)
+#'
+"analog_types"
+
+
+#' @title
+#' List area types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
+#'
+#' @examples
+#' dplyr::glimpse(entsoeapi::area_types)
+#'
+"area_types"
+
+
+#' @title
+#' List coordinate system types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
+#'
+#' @examples
+#' dplyr::glimpse(entsoeapi::coordinate_system_types)
+#'
+"coordinate_system_types"
+
+
+#' @title
+#' List fuel types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
+#'
+#' @examples
+#' dplyr::glimpse(entsoeapi::fuel_types)
+#'
+"fuel_types"
+
+
+#' @title
+#' List market product types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
+#'
+#' @examples
+#' dplyr::glimpse(entsoeapi::market_product_types)
+#'
+"market_product_types"
+
+
+#' @title
+#' List price component types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
+#'
+#' @examples
+#' dplyr::glimpse(entsoeapi::price_component_types)
+#'
+"price_component_types"
+
+
+#' @title
+#' List timeframe types based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
+#'
+#' @examples
+#' dplyr::glimpse(entsoeapi::timeframe_types)
+#'
+"timeframe_types"
+
+
+#' @title
+#' List unit multiplier based on
+#' 'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
+#'
+#' @examples
+#' dplyr::glimpse(entsoeapi::unit_multiplier)
+#'
+"unit_multiplier"

@@ -6,6 +6,13 @@
 \usage{
 substation_eic()
 }
+\value{
+A tibble of accordingly filtered EIC codes, which contains such columns as
+\code{EicCode}, \code{EicDisplayName}, \code{EicLongName}, \code{EicParent},
+\code{EicResponsibleParty}, \code{EicStatus}, \code{MarketParticipantPostalCode},
+\code{MarketParticipantIsoCountryCode}, \code{MarketParticipantVatCode},
+\code{EicTypeFunctionList} and \code{type}.
+}
 \description{
 This function downloads all approved substation A
 energy identification codes from this site:
@@ -19,11 +26,8 @@ They can be classified as normal outside substation,
 armoured substation and underground substation.
 }
 \examples{
+eic_substation <- entsoeapi::substation_eic()
 
-library(entsoeapi)
-
-eic_substation <- substation_eic()
-
-str(eic_substation)
+dplyr::glimpse(eic_substation)
 
 }

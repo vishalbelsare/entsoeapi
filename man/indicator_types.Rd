@@ -3,7 +3,8 @@
 \docType{data}
 \name{indicator_types}
 \alias{indicator_types}
-\title{List Indicator Types}
+\title{List indicator types based on
+'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'}
 \format{
 An object of class \code{data.table} (inherits from \code{data.frame}) with 2 rows and 3 columns.
 }
@@ -11,13 +12,11 @@ An object of class \code{data.table} (inherits from \code{data.frame}) with 2 ro
 indicator_types
 }
 \description{
-List Indicator Types
+List indicator types based on
+'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 }
 \examples{
-
-library(entsoeapi)
-
-str(indicator_types)
+dplyr::glimpse(entsoeapi::indicator_types)
 
 }
 \keyword{datasets}

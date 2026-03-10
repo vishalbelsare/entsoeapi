@@ -3,21 +3,20 @@
 \docType{data}
 \name{allocation_mode_types}
 \alias{allocation_mode_types}
-\title{List Allocation Mode Types}
+\title{List allocation mode types based on
+'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'}
 \format{
-An object of class \code{data.table} (inherits from \code{data.frame}) with 5 rows and 3 columns.
+An object of class \code{data.table} (inherits from \code{data.frame}) with 4 rows and 3 columns.
 }
 \usage{
 allocation_mode_types
 }
 \description{
-List Allocation Mode Types
+List allocation mode types based on
+'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 }
 \examples{
-
-library(entsoeapi)
-
-str(allocation_mode_types)
+dplyr::glimpse(entsoeapi::allocation_mode_types)
 
 }
 \keyword{datasets}

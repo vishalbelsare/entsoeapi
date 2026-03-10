@@ -6,6 +6,13 @@
 \usage{
 accounting_point_eic()
 }
+\value{
+A tibble of accordingly filtered EIC codes, which contains such columns as
+\code{EicCode}, \code{EicDisplayName}, \code{EicLongName}, \code{EicParent},
+\code{EicResponsibleParty}, \code{EicStatus}, \code{MarketParticipantPostalCode},
+\code{MarketParticipantIsoCountryCode}, \code{MarketParticipantVatCode},
+\code{EicTypeFunctionList} and \code{type}.
+}
 \description{
 This function downloads approved accounting point Z
 energy identification codes from this site:
@@ -14,11 +21,8 @@ An entity under balance responsibility where balance supplier change
 can take place and for which commercial business processes are defined.
 }
 \examples{
+eic_accounting_point <- entsoeapi::accounting_point_eic()
 
-library(entsoeapi)
-
-eic_accounting_point <- accounting_point_eic()
-
-str(eic_accounting_point)
+dplyr::glimpse(eic_accounting_point)
 
 }

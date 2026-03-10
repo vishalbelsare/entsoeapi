@@ -3,21 +3,20 @@
 \docType{data}
 \name{energy_product_types}
 \alias{energy_product_types}
-\title{List Energy Product Types}
+\title{List energy product types based on
+'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'}
 \format{
-An object of class \code{data.table} (inherits from \code{data.frame}) with 7 rows and 3 columns.
+An object of class \code{data.table} (inherits from \code{data.frame}) with 9 rows and 3 columns.
 }
 \usage{
 energy_product_types
 }
 \description{
-List Energy Product Types
+List energy product types based on
+'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 }
 \examples{
-
-library(entsoeapi)
-
-str(energy_product_types)
+dplyr::glimpse(entsoeapi::energy_product_types)
 
 }
 \keyword{datasets}

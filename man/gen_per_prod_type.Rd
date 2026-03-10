@@ -18,10 +18,10 @@ gen_per_prod_type(
 bidding zone or country}
 
 \item{period_start}{POSIXct or YYYY-MM-DD HH:MM:SS format
-Maximum one year range limit applies}
+One year range limit applies}
 
 \item{period_end}{POSIXct or YYYY-MM-DD HH:MM:SS format
-Maximum one year range limit applies}
+One year range limit applies}
 
 \item{gen_type}{Defaults to NULL, otherwise list of generation type
 codes from asset_types table}
@@ -36,15 +36,14 @@ Actual aggregated net generation output (MW) or consumption
 per market time unit and per production type.
 }
 \examples{
+df <- entsoeapi::gen_per_prod_type(
+  eic          = "10YFR-RTE------C",
+  period_start = lubridate::ymd(x = "2020-02-01", tz = "CET"),
+  period_end   = lubridate::ymd(x = "2020-03-01", tz = "CET"),
+  gen_type     = NULL,
+  tidy_output  = TRUE
+)
 
-library(entsoeapi)
-library(lubridate)
-
-df <- gen_per_prod_type(eic          = "10YFR-RTE------C",
-                        period_start = ymd(x = "2020-02-01", tz = "CET"),
-                        period_end   = ymd(x = "2020-03-01", tz = "CET"),
-                        gen_type     = NULL,
-                        tidy_output  = TRUE)
-str(df)
+dplyr::glimpse(df)
 
 }

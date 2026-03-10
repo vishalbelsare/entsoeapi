@@ -6,6 +6,13 @@
 \usage{
 tie_line_eic()
 }
+\value{
+A tibble of accordingly filtered EIC codes, which contains such columns as
+\code{EicCode}, \code{EicDisplayName}, \code{EicLongName}, \code{EicParent},
+\code{EicResponsibleParty}, \code{EicStatus}, \code{MarketParticipantPostalCode},
+\code{MarketParticipantIsoCountryCode}, \code{MarketParticipantVatCode},
+\code{EicTypeFunctionList} and \code{type}.
+}
 \description{
 This function downloads approved tie line T
 energy identification codes from this site:
@@ -14,11 +21,8 @@ It covers a transmission line that connects different areas
 excluding HVDC interconnectors.
 }
 \examples{
+eic_tie_line <- entsoeapi::tie_line_eic()
 
-library(entsoeapi)
-
-eic_tie_line <- tie_line_eic()
-
-str(eic_tie_line)
+dplyr::glimpse(eic_tie_line)
 
 }

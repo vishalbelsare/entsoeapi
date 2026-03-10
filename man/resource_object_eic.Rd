@@ -6,6 +6,13 @@
 \usage{
 resource_object_eic()
 }
+\value{
+A tibble of accordingly filtered EIC codes, which contains such columns as
+\code{EicCode}, \code{EicDisplayName}, \code{EicLongName}, \code{EicParent},
+\code{EicResponsibleParty}, \code{EicStatus}, \code{MarketParticipantPostalCode},
+\code{MarketParticipantIsoCountryCode}, \code{MarketParticipantVatCode},
+\code{EicTypeFunctionList} and \code{type}.
+}
 \description{
 This function downloads approved resource object W
 energy identification codes from this site:
@@ -14,11 +21,8 @@ A resource that can either produce or consume energy
 and that is reported in a schedule.
 }
 \examples{
+eic_resource_object <- entsoeapi::resource_object_eic()
 
-library(entsoeapi)
-
-eic_resource_object <- resource_object_eic()
-
-str(eic_resource_object)
+dplyr::glimpse(eic_resource_object)
 
 }

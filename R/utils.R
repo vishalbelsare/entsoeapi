@@ -1,20 +1,570 @@
-# calculate offset URLs
-calc_offset_urls <- function(reason, url) {
+#' @title
+#' instantiate a memory cache store for maximum 1 hour
+#'
+#' @importFrom cachem cache_mem
+#'
+#' @noRd
+m <- cachem::cache_mem(max_age = 3600)
+
+
+utils::globalVariables(
+  c(
+    "allocation_mode_types",
+    "analog_types",
+    "api_req_safe",
+    "area_eic",
+    "asset_types",
+    "auction_types",
+    "business_types",
+    "category_types",
+    "classification_types",
+    "coding_scheme_types",
+    "contract_types",
+    "coordinate_system_types",
+    "currency_types",
+    "curve_types",
+    "direction_types",
+    "doc_status",
+    "eic_types",
+    "energy_product_types",
+    "extract_response",
+    "fuel_types",
+    "get_all_allocated_eic",
+    "get_eiccodes",
+    "hvdc_mode_types",
+    "indicator_types",
+    "m",
+    "market_product_types",
+    "message_types",
+    "object_aggregation_types",
+    "price_direction_types",
+    "process_types",
+    "quality_types",
+    "reason_code_types",
+    "rights_types",
+    "role_types",
+    "status_types",
+    "tariff_types",
+    "there_is_provider",
+    "timeframe_types",
+    "TimeSeries.mRID",
+    "transmission_pair_eic_dict",
+    "ts_point_position",
+    "ts_resolution",
+    "ts_resolution_ok",
+    "ts_resolution_real_length",
+    "ts_resolution_requ_length",
+    "ts_time_interval_start",
+    "unit_multiplier",
+    "unit_of_measure_types",
+    "unit_symbol_types",
+    "url_posixct_format"
+  )
+)
+
+
+#' @title
+#' Organize list of strings into group
+#'
+#' @description
+#' This function solves a connected components problem where vectors
+#' are connected if they share at least one common string.
+#' It returns with groups containing the indices of elements.
+#'
+#' @noRd
+grouping_by_common_strings <- function(vector_list) {
+  n <- length(vector_list)
+
+  if (n == 0L) {
+    return(list())
+  }
+  if (n == 1L) {
+    return(list(1L))
+  }
+
+  # Build an inverted index: string -> vector indices containing that string
+  string_to_indices <- new.env(hash = TRUE)
+
+  for (i in 1L:n) {
+    unique_strings <- unique(vector_list[[i]])
+    for (s in unique_strings) {
+      if (exists(x = s, envir = string_to_indices)) {
+        string_to_indices[[s]] <- c(string_to_indices[[s]], i)
+      } else {
+        string_to_indices[[s]] <- i
+      }
+    }
+  }
+
+  # Union-Find with path compression
+  parent <- 1L:n
+
+  find_root <- function(i) {
+    if (parent[i] != i) {
+      parent[i] <<- find_root(parent[i])
+    }
+    parent[i]
+  }
+
+  union_sets <- function(i, j) {
+    root_i <- find_root(i)
+    root_j <- find_root(j)
+    if (root_i != root_j) {
+      parent[root_j] <<- root_i
+    }
+  }
+
+  # For each string, union all vectors that contain it
+  for (s in ls(string_to_indices)) {
+    indices <- string_to_indices[[s]]
+    if (length(indices) > 1L) {
+      for (k in 2L:length(indices)) {
+        union_sets(i = indices[1L], j = indices[k])
+      }
+    }
+  }
+
+  # Normalize all parents
+  for (i in 1L:n) {
+    parent[i] <- find_root(i)
+  }
+
+  # Group indices by their root parent
+  base::split(x = 1L:n, f = parent) |>
+    unname()
+}
+
+
+#' @title
+#' Calculate the Number of Children for a Given Nodeset
+#'
+#' @description
+#' iterate through XML all children of a given XML nodeset,
+#' and detect if they have children as well or not
+#' and finally count the number of detected children
+#'
+#' @noRd
+number_of_children <- function(nodeset) {
+  have_no_child <- purrr::map_lgl(
+    xml2::xml_children(nodeset),
+    ~ xml2::xml_children(.x) |>
+      unlist(recursive = FALSE) |>
+      is.null()
+  )
+  sum(have_no_child == FALSE)
+}
+
+
+#' @title
+#' Extract the Contents of XML nodesets
+#'
+#' @description
+#' extract the content of the provided XML nodesets,
+#' and compose a list of data.tables from them
+#'
+#' @noRd
+extract_nodesets <- function(nodesets, prefix = NULL) {
+  purrr::map(
+    nodesets,
+    \(nodeset) {
+      # convert the branches into a named vector
+      named_vect <- nodeset |>
+        xml2::as_list() |>
+        unlist(recursive = TRUE)
+
+      # convert the named_vect from NULL to NA if there is no value in it
+      if (is.null(named_vect)) named_vect <- NA_character_
+
+      # adjust element names
+      names(named_vect) <- stringr::str_c(
+        prefix,
+        xml2::xml_name(nodeset),
+        names(named_vect),
+        sep = "."
+      )
+
+      # extract unique vector element names
+      unique_names <- names(named_vect) |>
+        unique()
+
+      # compose a table from the elements and
+      # adjust column names accordingly
+      purrr::map(
+        unique_names,
+        ~ named_vect[names(named_vect) == .x]
+      ) |>
+        data.table::as.data.table() |>
+        stats::setNames(nm = unique_names)
+    }
+  )
+}
+
+
+#' @title
+#' Extract Data From an XML Document into Tabular Format
+#'
+#' @description
+#' Mine data from all levels (leaf,twig, branch)
+#' of an XML document and convert them to a tibble
+#'
+#' @noRd
+extract_leaf_twig_branch <- function(nodesets) {
+  # detect the number of children for each element
+  children_of_nodes <- purrr::map_int(nodesets, number_of_children)
+
+  # compose a sub table from first level data
+  first_level_tbl <- nodesets[children_of_nodes == 0L] |>
+    extract_nodesets() |>
+    data.table::as.data.table()
+
+  second_level_tbl <- nodesets[children_of_nodes > 0L] |>
+    purrr::map(
+      \(scnd_ns) {
+        # define an empty list
+        compound_tbls <- list()
+
+        # extract child nodesets
+        my_xml_paths <- xml2::xml_contents(scnd_ns) |>
+          xml2::xml_path()
+        child_nodesets <- purrr::map(
+          my_xml_paths,
+          ~ xml2::xml_find_all(x = scnd_ns, xpath = .x)
+        )
+
+        # convert the childless child nodes into a table
+        ch_children_of_nodes <- purrr::map_int(
+          child_nodesets,
+          number_of_children
+        )
+        compound_tbls[[1L]] <- extract_nodesets(
+          nodesets = child_nodesets[ch_children_of_nodes == 0L],
+          prefix = xml2::xml_name(scnd_ns)
+        ) |>
+          data.table::as.data.table()
+
+        # convert the grandchild nodes into a table
+        nodeset_tbls <- extract_nodesets(
+          nodesets = child_nodesets[ch_children_of_nodes > 0L],
+          prefix = xml2::xml_name(scnd_ns)
+        )
+        nodeset_groups <- purrr::map(nodeset_tbls, names) |>
+          grouping_by_common_strings()
+        if (length(nodeset_groups) == 1L) {
+          compound_tbls[[2L]] <- nodeset_tbls |>
+            data.table::rbindlist(use.names = TRUE, fill = TRUE)
+        } else {
+          compound_tbls[[2L]] <- seq_along(nodeset_groups) |>
+            purrr::map(
+              ~ nodeset_tbls[nodeset_groups[[.x]]] |>
+                data.table::rbindlist(use.names = TRUE, fill = TRUE)
+            ) |>
+            dplyr::bind_cols()
+        }
+
+        # column-wise append the tables
+        compound_tbl <- compound_tbls |>
+          purrr::compact() |>
+          dplyr::bind_cols()
+
+        compound_tbl
+      }
+    ) |>
+    data.table::rbindlist(use.names = TRUE, fill = TRUE)
+
+  list(first_level_tbl, second_level_tbl) |>
+    purrr::compact() |>
+    dplyr::bind_cols() |>
+    tibble::tibble()
+}
+
+
+#' @title
+#' Converts Extracted Data into a Tidy or a Nested format
+#'
+#' @description
+#' In tidy format each record has a calculated 'ts_point_dt_start' timestamp.
+#' In nested format each submitted time unit record contains a nested table
+#' with detailed data series
+#'
+#' @noRd
+tidy_or_not <- function(tbl, tidy_output = FALSE) {
+  # detect if there is any 'bid_ts_' column names
+  have_bid_ts_col <- stringr::str_detect(
+    string = names(tbl),
+    pattern = "^bid_ts_"
+  ) |>
+    any()
+
+  # convert the original 'bid_ts_' column names to 'ts_'
+  if (have_bid_ts_col) {
+    names(tbl) <- names(tbl) |>
+      stringr::str_replace_all(
+        pattern = "^bid_ts_",
+        replacement = "ts_"
+      )
+  }
+
+  # extract the ts_point_ column names
+  ts_point_cols <- stringr::str_subset(
+    string = names(tbl),
+    pattern = "^ts_point_"
+  )
+
+  # extract the ts_reason_ column names
+  ts_reason_cols <- stringr::str_subset(
+    string = names(tbl),
+    pattern = "^ts_reason_"
+  )
+
+  # if there is no ts_point_ column
+  if (length(ts_point_cols) == 0L) {
+    # convert the original 'bid_ts_' column names back
+    if (have_bid_ts_col) {
+      names(tbl) <- names(tbl) |>
+        stringr::str_replace_all(
+          pattern = "^ts_",
+          replacement = "bid_ts_"
+        )
+    }
+    return(tbl)
+  }
+
+  # extract curve type from tbl
+  curve_type <- base::subset(
+    x = tbl,
+    select = stringr::str_match_all(
+      string = names(tbl),
+      pattern = ".*curve_type$"
+    ) |>
+      unlist()
+  ) |>
+    unlist() |>
+    unique()
+
+  # select the group by columns
+  group_cols <- base::setdiff(
+    x = names(tbl),
+    y = c(ts_point_cols, ts_reason_cols)
+  )
+
+  # calculate 'by' values which will be used to calculate
+  # the 'ts_point_dt_start' values
+  tbl <- tbl |>
+    dplyr::mutate(
+      by = data.table::fcase(
+        ts_resolution == "PT4S", "4 sec",
+        ts_resolution == "PT1M", "1 min",
+        ts_resolution == "PT15M", "15 mins",
+        ts_resolution == "PT30M", "30 mins",
+        ts_resolution == "PT60M", "1 hour",
+        ts_resolution == "P1D", "1 DSTday",
+        ts_resolution == "P7D", "7 DSTdays",
+        ts_resolution == "P1M", "1 month",
+        ts_resolution == "P1Y", "1 year",
+        default = "n/a"
+      )
+    )
+
+  # if curve_type not defined or 'A01', then
+  if (is.null(curve_type) || curve_type == "A01") {
+    # do nothing in this case
+    Sys.sleep(time = 0)
+
+    # if curve_type is 'A03', then
+  } else if (curve_type == "A03") {
+    ts_resolution_requ_length <- ts_resolution_real_length <- ts_mrid <- NULL
+    ts_resolution_ok <- ts_time_interval_start <- ts_time_interval_end <- NULL
+
+    # calculate 'ts_resolution_requ_length', 'ts_resolution_real_length'
+    # and 'ts_resolution_ok' values
+    tbl <- tbl |>
+      dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols))) |>
+      dplyr::mutate(
+        ts_resolution_requ_length =
+          (max(ts_time_interval_end) - min(ts_time_interval_start)) /
+          lubridate::duration(by),
+        ts_resolution_real_length = dplyr::n(),
+        ts_resolution_ok =
+          ts_resolution_real_length == ts_resolution_requ_length
+      ) |>
+      dplyr::ungroup()
+
+    # filter on those periods which have missing timeseries
+    # data points (ts_point_position)
+    tbl_adj <- base::subset(x = tbl, subset = !ts_resolution_ok)
+
+    # check if there is any need to adjust the timeseries data points
+    if (nrow(tbl_adj) > 0L) {
+      # remove the to be adjusted rows from the base 'tbl'
+      # or in other words stash the records with 'ok' resolution
+      tbl <- base::subset(x = tbl, subset = ts_resolution_ok)
+
+      # create a frame table to adjust the timeseries data points
+      frame_tbl <- base::subset(
+        x = tbl_adj,
+        select = c(
+          ts_time_interval_start,
+          ts_time_interval_end,
+          ts_resolution_requ_length,
+          ts_resolution,
+          ts_mrid
+        )
+      ) |>
+        unique() |>
+        purrr::pmap(
+          ~ tibble::tibble(
+            ts_time_interval_start = ..1,
+            ts_time_interval_end = ..2,
+            ts_point_position = seq.int(from = 1, to = ..3),
+            ts_resolution = ..4,
+            ts_mrid = ..5
+          )
+        ) |>
+        data.table::rbindlist(use.names = TRUE, fill = TRUE)
+
+      # full join the adjusted timeseries data points with the frame table
+      tbl_adj <- data.table::merge.data.table(
+        x = tbl_adj,
+        y = frame_tbl,
+        by = c(
+          "ts_time_interval_start",
+          "ts_time_interval_end",
+          "ts_point_position",
+          "ts_resolution",
+          "ts_mrid"
+        ),
+        all = TRUE
+      ) |>
+        data.table::as.data.table()
+
+      # fill the missing values with the last observation carry forward method
+      group_cols_adj <- c("ts_resolution", "ts_mrid")
+      tbl_adj <- tbl_adj |>
+        dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols_adj))) |>
+        tidyr::fill(dplyr::everything()) |>
+        dplyr::ungroup()
+
+      # append the adjusted timeseries data points to the 'ok' timeseries data
+      tbl <- list(tbl, tbl_adj) |>
+        data.table::rbindlist(use.names = TRUE, fill = TRUE)
+      data.table::setorderv(
+        x = tbl,
+        cols = c(
+          "ts_time_interval_start",
+          "ts_time_interval_end",
+          "ts_point_position"
+        )
+      )
+    }
+  } else {
+    # hints: https://eepublicdownloads.entsoe.eu/clean-documents/EDI/
+    # Library/cim_based/
+    # Introduction_of_different_Timeseries_possibilities__curvetypes
+    # __with_ENTSO-E_electronic_document_v1.4.pdf
+    cli::cli_abort("The curve type is not defined, but {curve_type}!")
+  }
+
+  # calculate the 'ts_point_dt_start' values accordingly
+  tbl <- tbl |>
+    base::subset(
+      subset = !is.na(ts_time_interval_start) & !is.na(ts_point_position)
+    ) |>
+    dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols))) |>
+    dplyr::mutate(
+      ts_point_dt_start = seq.POSIXt(
+        from = min(ts_time_interval_start),
+        length.out = max(ts_point_position),
+        by = unique(by),
+      )[ts_point_position] |> # handle the unusual case of any missing period
+        as.POSIXct(tz = "UTC")
+    ) |>
+    dplyr::ungroup()
+
+  # if tidy output is needed, then
+  if (tidy_output == TRUE) {
+    # set the not_needed_cols
+    not_needed_cols <- c(
+      "ts_point_position", "by", "ts_resolution_requ_length",
+      "ts_resolution_real_length", "ts_resolution_ok"
+    )
+
+    # remove the not needed columns
+    not_needed_cols <- base::intersect(
+      x = not_needed_cols,
+      y = names(tbl)
+    )
+    tbl[not_needed_cols] <- list(NULL)
+  } else {
+    # set the not_needed_cols
+    not_needed_cols <- c(
+      "ts_point_dt_start", "by", "ts_resolution_requ_length",
+      "ts_resolution_real_length", "ts_resolution_ok"
+    )
+
+    # remove the not needed columns
+    not_needed_cols <- base::intersect(
+      x = not_needed_cols,
+      y = names(tbl)
+    )
+    tbl[not_needed_cols] <- list(NULL)
+
+    # nest the timeseries data points
+    tbl <- tidyr::nest(
+      tbl,
+      ts_point = tidyselect::all_of(ts_point_cols)
+    )
+  }
+
+  # convert the original 'bid_ts_' column names back
+  if (have_bid_ts_col) {
+    names(tbl) <- names(tbl) |>
+      stringr::str_replace_all(
+        pattern = "^ts_",
+        replacement = "bid_ts_"
+      )
+  }
+
+  # return
+  tbl
+}
+
+
+#' @title
+#' calculate offset URLs
+#'
+#' @noRd
+calc_offset_urls <- function(reason, query_string) {
   # extract the number of the allowed documents
   docs_allowed <- stringr::str_extract(
     string = reason,
-    pattern = "allowed: [0-9]{1,8}"
+    pattern = "allowed maximum \\([0-9]{1,8}\\)"
   ) |>
     stringr::str_extract(pattern = "[0-9]{1,8}") |>
     as.integer()
+  if (is.na(docs_allowed)) {
+    docs_allowed <- stringr::str_extract(
+      string = reason,
+      pattern = "allowed:\\s+[0-9]{1,8}"
+    ) |>
+      stringr::str_extract(pattern = "[0-9]{1,8}") |>
+      as.integer()
+  }
 
   # extract the number of the requested documents
   docs_requested <- stringr::str_extract(
     string = reason,
-    pattern = "requested: [0-9]{1,8}"
+    pattern = "number of instances \\([0-9]{1,8}\\)"
   ) |>
     stringr::str_extract(pattern = "[0-9]{1,8}") |>
     as.integer()
+  if (is.na(docs_requested)) {
+    docs_requested <- stringr::str_extract(
+      string = reason,
+      pattern = "requested:\\s[0-9]{1,8}"
+    ) |>
+      stringr::str_extract(pattern = "[0-9]{1,8}") |>
+      as.integer()
+  }
 
   # calculate how many offset round is needed
   all_offset_nr <- docs_requested %/% docs_allowed +
@@ -22,14 +572,17 @@ calc_offset_urls <- function(reason, url) {
   all_offset_seq <- (seq(all_offset_nr) - 1L) * docs_allowed
 
   # recompose offset URLs
-  message("*** The amount of requested data exceeds allowed limit, ",
-          "therefore the request has been rephrased. ***")
-  return(paste0(url, "&offset=", all_offset_seq))
+  cli::cli_alert_info("*** The request has been rephrased. ***")
+  query_string <- query_string |>
+    gsub(pattern = "\\&offset=[0-9]+", replacement = "")
+  paste0(query_string, "&offset=", all_offset_seq)
 }
 
 
-
-# read XML content from a zip compressed file
+#' @title
+#' read XML content from a zip compressed file
+#'
+#' @noRd
 read_zipped_xml <- function(temp_file_path) {
   # safely decompress zip file into several files on disk
   unzip_safe <- purrr::safely(utils::unzip)
@@ -41,957 +594,1458 @@ read_zipped_xml <- function(temp_file_path) {
 
   # read the xml content from each the decompressed files
   en_cont_list <- unzipped_files$result |>
-    purrr::map(~{
+    purrr::map(~ {
       xml_content <- xml2::read_xml(.x)
-      message(.x, " has read in")
+      cli::cli_alert_success("{.x} has been read in")
       return(xml_content)
     })
 
   # return with the xml content list
-  return(en_cont_list)
-
+  en_cont_list
 }
 
 
-# call request against the ENTSO-E API and converts the response into xml
-api_req <- function(url = NULL) {
-  if (is.null(url)) {
-    stop("The argument 'url' is missing!")
-  }
-  api_url <- "https://web-api.tp.entsoe.eu/api"
-  if (!startsWith(x = url, prefix = api_url)) {
-    stop("The argument 'url' is not valid!")
-  }
-  message(url, " ...")
-  temp_file_path <- tempfile()
-  resp <- httr::GET(url,
-                    httr::write_disk(path = temp_file_path, overwrite = TRUE))
-  message("downloaded")
+#' @title
+#' call request against the ENTSO-E API and converts the response into xml
+#'
+#' @noRd
+api_req <- function(
+  api_scheme = "https://",
+  api_domain = "web-api.tp.entsoe.eu/",
+  api_name = "api?",
+  query_string = NULL,
+  security_token = NULL
+) {
+  checkmate::assert_string(query_string)
+  checkmate::assert_string(security_token)
+  url <- paste0(
+    api_scheme, api_domain, api_name, query_string, "&securityToken="
+  )
+  cli::cli_h1("API call")
+  cli::cli_alert("{url}<...>")
 
-  # if the get request is successful, then ...
-  if (httr::status_code(resp) == "200") {
+  # retrieve data from the API
+  req <- httr2::request(base_url = paste0(url, security_token)) |>
+    httr2::req_method(method = "GET") |>
+    httr2::req_verbose(
+      header_req = FALSE,
+      header_resp = TRUE,
+      body_req = FALSE,
+      body_resp = FALSE
+    ) |>
+    httr2::req_timeout(seconds = 60)
+  resp <- "No response."
+  resp <- req_perform_safe(req = req)
 
-    # if the request is a zip file, then ...
-    if (resp$headers$`content-type` == "application/zip") {
+  if (is.null(x = resp$error)) {
+    result_obj <- resp$result
+    cli::cli_alert_success("response has arrived")
 
-      # read the xml content from each the decompressed files
-      en_cont_list <- read_zipped_xml(temp_file_path)
-
-      # return with the xml content list
-      return(en_cont_list)
-
-    } else {
-
-      # read the xml content from the response
-      en_cont <- httr::content(resp, encoding = "UTF-8")
-
-      # return with the xml content
-      return(en_cont)
-
-    }
-
-  } else {
-
-    # extract reason from reason text
-    response_reason <- httr::content(resp, encoding = "utf-8") |>
-      xml2::as_list() |>
-      purrr::pluck("Acknowledgement_MarketDocument", "Reason", "text") |>
-      unlist()
-
-    # check if offset usage needed or not
-    offset_needed <- stringr::str_detect(
-      string = response_reason,
-      pattern = "The amount of requested data exceeds allowed limit."
-    )
-
-    # if offset usage needed, then ...
-    if (isTRUE(offset_needed)) {
-
-      # calculate offset URLs
-      offset_urls <- calc_offset_urls(
-        reason = response_reason,
-        url = url
+    # if the get request is successful, then ...
+    if (httr2::resp_status(resp = result_obj) == 200) {
+      # retrieve content-type from response headers
+      rhct <- httr2::resp_content_type(resp = result_obj)
+      expt_zip <- c(
+        "application/zip",
+        "application/octet-stream"
+      )
+      expt_xml <- c(
+        "text/xml",
+        "application/xml"
       )
 
-      # recursively call the api_req() function itself
-      en_cont_list <- purrr::map(offset_urls, api_req) |>
-        unlist(recursive = FALSE)
+      # if the request is a zip file, then ...
+      if (rhct %in% expt_zip) {
+        # save raw data to disk from memory
+        temp_file_path <- tempfile(fileext = ".zip")
+        writeBin(
+          object = httr2::resp_body_raw(resp = result_obj),
+          con = temp_file_path
+        )
 
-      return(en_cont_list)
+        # read the xml content from each the decompressed files
+        en_cont_list <- read_zipped_xml(temp_file_path = temp_file_path)
 
-    } else {
+        # return with the xml content list
+        en_cont_list
+      } else if (rhct %in% expt_xml) {
+        # read the xml content from the response and return
+        result_obj |>
+          httr2::resp_body_xml(encoding = "UTF-8")
+      } else {
+        cli::cli_abort(
+          "Not known response content-type: {result_obj$headers$`content-type`}"
+        )
+      }
+    }
+  } else {
+    error_obj <- resp$error
 
-      stop(httr::content(resp, encoding = "UTF-8"))
+    # retrieve content-type from response headers
+    if (isTRUE(error_obj$status == 503)) cli::cli_abort(error_obj$message)
+    if (is.null(error_obj$resp)) cli::cli_abort(error_obj$parent$message)
+    rhct <- httr2::resp_content_type(resp = error_obj$resp)
+    expt_html <- c("text/html")
+    expt_xml <- c("text/xml", "application/xml")
+    expt_json <- c("text/xml", "application/json")
 
+    if (rhct %in% expt_html) {
+      # extract reason code and text
+      response_reason_code <- httr2::resp_status(error_obj$resp)
+      response_reason_text <- error_obj$resp |>
+        httr2::resp_body_html(encoding = "utf-8") |>
+        xmlconvert::xml_to_list() |>
+        purrr::pluck("body")
+
+      sprintf("/s: %s", response_reason_code, response_reason_text) |>
+        cli::cli_abort()
     }
 
+    if (rhct %in% expt_xml) {
+      # extract reason from reason text
+      response_reason <- error_obj$resp |>
+        httr2::resp_body_xml(encoding = "utf-8") |>
+        xmlconvert::xml_to_list() |>
+        purrr::pluck("Reason")
+
+      if (!is.list(response_reason) ||
+            !identical(names(response_reason), c("code", "text"))) {
+        cli::cli_abort(
+          paste(
+            "{httr2::resp_status(error_obj$resp)}:",
+            "{httr2::resp_status_desc(error_obj$resp)}"
+          )
+        )
+      }
+
+      if (response_reason$code == 999) {
+        # check if query offsetting is forbidden
+        offset_forbidden <- stringr::str_detect(
+          string = query_string,
+          pattern = sprintf(
+            fmt = "(%s|%s|%s|%s|%s|%s)",
+            "(?=.*documentType=A63)(?=.*businessType=A(46|85))",
+            "(?=.*documentType=A65)(?=.*businessType=A85)",
+            "(?=.*documentType=B09)(?=.*StorageType=archive)",
+            "documentType=A91",
+            "documentType=A92",
+            "(?=.*documentType=A94)(?=.*auction.Type=A02)"
+          )
+        )
+
+        # if offset usage is not forbidden, then ...
+        if (isFALSE(offset_forbidden)) {
+          # check if offset usage needed
+          offset_needed <- stringr::str_detect(
+            string = response_reason$text,
+            pattern = "exceeds the allowed maximum"
+          )
+
+          # if offset usage needed and not forbidden, then ...
+          if (isTRUE(offset_needed)) {
+            # calculate offset URLs
+            offset_query_strings <- calc_offset_urls(
+              reason = response_reason$text,
+              query_string = query_string
+            )
+
+            # recursively call the api_req() function itself
+            en_cont_list <- offset_query_strings |>
+              purrr::map(
+                ~ api_req(
+                  query_string = .x,
+                  security_token = security_token
+                )
+              )
+
+            return(en_cont_list)
+          }
+        }
+
+        cli::cli_abort(paste(response_reason, collapse = "\n"))
+      } else {
+        cli::cli_abort("{response_reason$code}: {response_reason$text}")
+      }
+    }
+
+    if (rhct %in% expt_json) {
+      # extract reason from reason text
+      response_reason <- error_obj$resp |>
+        httr2::resp_body_json(encoding = "utf-8") |>
+        purrr::pluck("uuAppErrorMap", "URI_FORMAT_ERROR")
+      cli::cli_abort(response_reason$message)
+    }
   }
 }
 
 
-
-# safely call api_req() function
+#' @title
+#' safely call api_req() function
+#'
+#' @noRd
 api_req_safe <- purrr::safely(api_req)
 
 
+#' @title
+#' safely call req_perform() function
+#'
+#' @noRd
+req_perform_safe <- purrr::safely(httr2::req_perform)
 
-# converts the given POSIXct or character timestamp into the acceptable format
+
+#' @title
+#' converts the given POSIXct or character timestamp into the acceptable format
+#'
+#' @noRd
 url_posixct_format <- function(x) {
   if (is.null(x)) {
     y <- NULL
   } else if (inherits(x = x, what = "POSIXct")) {
     y <- strftime(x = x, format = "%Y%m%d%H%M", tz = "UTC", usetz = FALSE)
   } else if (inherits(x = x, what = "character")) {
-    y <- lubridate::parse_date_time(x      = x,
-                                    orders = c("%Y-%m-%d %H:%M:%S",
-                                               "%Y-%m-%d %H:%M",
-                                               "%Y-%m-%d",
-                                               "%Y.%m.%d %H:%M:%S",
-                                               "%Y.%m.%d %H:%M",
-                                               "%Y.%m.%d",
-                                               "%Y%m%d%H%M%S",
-                                               "%Y%m%d%H%M",
-                                               "%Y%m%d"),
-                                    tz     = "UTC",
-                                    quiet  = TRUE) |>
+    y <- lubridate::parse_date_time(
+      x = x,
+      orders = c(
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d",
+        "%Y.%m.%d %H:%M:%S",
+        "%Y.%m.%d %H:%M",
+        "%Y.%m.%d",
+        "%Y%m%d%H%M%S",
+        "%Y%m%d%H%M",
+        "%Y%m%d"
+      ),
+      tz = "UTC",
+      quiet = TRUE
+    ) |>
       strftime(format = "%Y%m%d%H%M", tz = "UTC", usetz = FALSE)
     if (is.na(y)) {
-      stop("Only the class POSIXct or '%Y-%m-%d %H:%M:%S' formatted text ",
-           "are supported by the converter.")
+      cli::cli_abort(
+        paste(
+          "Only the class POSIXct or '%Y-%m-%d %H:%M:%S' formatted text",
+          "are supported by the converter."
+        )
+      )
     } else {
-      warning("The ", x, " value has interpreted as UTC!", call. = FALSE)
+      cli::cli_alert_warning("The {x} value has been interpreted as UTC!")
     }
   } else {
-    stop("The argument 'x' is not in an acceptable timestamp format!")
+    cli::cli_abort("The argument is not in an acceptable timestamp format!")
   }
 
-  return(y)
+  y
 }
 
 
-
-# create a time series table between "from" till "to"
-# with "seq_resolution" frequency
-# using "pos" position and "qty" quantity values
-dt_seq_helper <- function(from, to, seq_resolution = "PT60M", pos, qty) {
-  # define those variables as NULL which are used under non-standard evaluation
-  start_dt <- NULL
-  qty <- qty
-
-  # calculate "by" value from "seq_resolution" value
-  by <- tryCatch(
-    dplyr::case_when(seq_resolution == "PT1M" ~ "1 min",
-                     seq_resolution == "PT15M" ~ "15 mins",
-                     seq_resolution == "PT30M" ~ "30 mins",
-                     seq_resolution == "PT60M" ~ "1 hour",
-                     seq_resolution == "P1D" ~ "1 DSTday",
-                     seq_resolution == "P7D" ~ "7 DSTdays",
-                     seq_resolution == "P1Y" ~ "1 year",
-                     .default = "n/a"),
-    error = function(cond) {
-      message(conditionMessage(cond))
-      message("The sequence resolution does not seem to be valid.")
-      message(paste("Its type is:", typeof(seq_resolution)))
-      message(paste("Its structure is:", capture.output(str(seq_resolution))))
-      # set a return value in case of error
-      "n/a"
-    }
-  )
-
-  # check if we got a valid resolution
-  if (by == "n/a") {
-
-    stop("The 'resolution' value of the response is not supported yet.",
-         "\nPlease use 'PT1M', 'PT15M', 'PT30M', 'PT60M', 'P1D', ",
-         "'P7D' or 'P1Y'.")
-
-  } else if (by %in% c("1 DSTday", "7 DSTdays", "P1Y" ~ "1 year")) {
-
-    # create a datetime vector from "from" (incl.) to "to" (excl.) by "by"
-    tzone <- dplyr::case_when(
-      format(x = from, format = "%H", tz = "UTC") == "00" ~ "UTC",
-      format(x = from, format = "%H", tz = "WET") == "00" ~ "WET",
-      format(x = from, format = "%H", tz = "CET") == "00" ~ "CET",
-      format(x = from, format = "%H", tz = "EET") == "00" ~ "EET",
-      format(x = from, format = "%H", tz = "Europe/Moscow") == "00" ~ "Europe/Moscow",
-      .default = "not_known"
-    )
-    if (tzone == "not_known") {
-      stop("The from date should denote the midnight hour either ",
-           "in 'UTC', 'WET', 'CET', 'EET' or Europe/Moscow timezone!")
-    }
-    dts <- seq(
-      from = lubridate::with_tz(time = from, tzone = tzone),
-      length.out = length(pos),
-      by = by
-    ) |>
-      lubridate::with_tz(tzone = "UTC")
-
-  } else {
-
-    # create a datetime vector from "from" (incl.) to "to" (excl.) by "by"
-    dts <- seq(
-      from = from,
-      length.out = length(pos),
-      by = by
-    )
-    # round down the datetime vector elements to "by" unit
-    dts <- dts |>
-      lubridate::floor_date(unit = by)
-
-  }
-
-  # compose a tibble from the expanded periods
-  # and the provided quantity using starting positions
-  dt_tbl <- merge(x = data.table::data.table(start_dt = dts),
-                  y = data.table::data.table(start_dt = dts[pos],
-                                             qty),
-                  by = "start_dt",
-                  all.x = TRUE)
-  data.table::set(x     = dt_tbl,
-                  j     = "qty",
-                  value = data.table::nafill(x = dt_tbl$qty, type = "locf"))
-
-  return(tibble::as_tibble(dt_tbl))
-}
-
-
-
-# downloads approved Energy Identification Codes
-# from ENTSO-E Transparency Platform
-# under link "f"
-get_eiccodes <- function(f) {
-  message("\ndownloading ", f, " file ...")
+#' @title
+#' downloads approved Energy Identification Codes
+#'
+#' @description
+#' from ENTSO-E Transparency Platform under link "f"
+#'
+#' @noRd
+get_eiccodes <- function(
+  base_url = "https://eepublicdownloads.blob.core.windows.net/cio-lio/csv/",
+  f = NA_character_
+) {
+  # compose the complete url
+  complete_url <- paste0(base_url, f)
 
   # reading input file into a character vector
   # and replacing erroneous semicolons to commas
   # unfortunately there is no general rule for that,
   # hence it must be set manually!!
-  readlines_quiet <- purrr::quietly(readLines)
-  content <- readlines_quiet(con = f, encoding = "UTF-8")
-  lns <- content$result |>
-    stringr::str_replace_all(pattern     = "tutkimustehdas;\\sImatra",
-                             replacement = "tutkimustehdas, Imatra") |>
-    stringr::str_replace_all(pattern     = "; S\\.L\\.;",
-                             replacement = ", S.L.;") |>
-    stringr::str_replace_all(pattern     = "\\$amp;",
-                             replacement = "&")
-
-  # reading lines as they would be a csv
-  eiccodes <- data.table::fread(
-    text       = lns,
-    sep        = ";",
-    na.strings = c("", "n / a", "n/a", "N/A", "-", "-------", "."),
-    encoding   = "UTF-8"
+  readlines_safe <- purrr::safely(readLines, quiet = TRUE)
+  content <- suppressWarnings(
+    expr = readlines_safe(
+      con = complete_url, encoding = "UTF-8"
+    )
   )
+  if (is.null(content$error)) {
+    lns <- content$result |>
+      stringr::str_replace_all(
+        pattern = "tutkimustehdas;\\sImatra",
+        replacement = "tutkimustehdas, Imatra"
+      ) |>
+      stringr::str_replace_all(
+        pattern = "; S\\.L\\.;",
+        replacement = ", S.L.;"
+      ) |>
+      stringr::str_replace_all(
+        pattern = "\\$amp;",
+        replacement = "&"
+      )
 
-  # trimming character columns
-  eiccodes <- eiccodes |>
-    purrr::map(~{
-      if (is.character(.x)) {
-        trimws(x = .x, which = "both")
-      } else {
-        .x
-      }
-    }) |>
-    tibble::as_tibble()
+    # reading lines as they would be a csv
+    eiccodes <- data.table::fread(
+      text = lns,
+      sep = ";",
+      na.strings = c("", "n / a", "n/a", "N/A", "-", "-------", "."),
+      encoding = "UTF-8"
+    )
 
-  return(eiccodes)
+    # trimming character columns
+    eiccodes <- eiccodes |>
+      purrr::map(~ {
+        if (is.character(.x)) {
+          utf8::utf8_encode(x = .x) |>
+            trimws(which = "both")
+        } else {
+          .x
+        }
+      }) |>
+      tibble::as_tibble()
+
+    # return
+    eiccodes
+  } else {
+    cli::cli_abort(content$error$message)
+  }
 }
 
 
+#' @title
+#' downloads all allocated Energy Identification Codes
+#'
+#' @description
+#' from https://eepublicdownloads.blob.core.windows.net
+#'
+#' @noRd
+get_all_allocated_eic <- function() {
+  # define those variables as NULL which are used under non-standard evaluation
+  doc_status_value <- NULL
 
-# unpack an xml section into a tabular row
+  # set the link of the xml file
+  base_url <- "https://eepublicdownloads.blob.core.windows.net"
+
+  # retrieve data from the API
+  req <- httr2::request(base_url = base_url) |>
+    httr2::req_url_path_append("cio-lio") |>
+    httr2::req_url_path_append("xml") |>
+    httr2::req_url_path_append("allocated-eic-codes.xml") |>
+    httr2::req_method(method = "GET") |>
+    httr2::req_progress() |>
+    httr2::req_verbose(
+      header_req = FALSE,
+      header_resp = TRUE,
+      body_req = FALSE,
+      body_resp = FALSE
+    ) |>
+    httr2::req_timeout(seconds = 120) |>
+    httr2::req_retry(
+      max_tries = 3L,
+      backoff = \(resp) 10
+    )
+  resp <- "No response."
+  resp <- req_perform_safe(req = req)
+
+  if (is.null(resp$error)) {
+    cli::cli_alert_success("response has arrived")
+
+    # read the xml content from each the decompressed files
+    en_cont <- httr2::resp_body_raw(resp = resp$result) |>
+      rawToChar() |>
+      xml2::as_xml_document()
+
+    # convert XML to table
+    result_tbl <- tryCatch(
+      expr = {
+        nodesets <- xml2::xml_contents(x = en_cont)
+
+        # detect the number of children for each element
+        children_of_nodes <- purrr::map_int(nodesets, number_of_children)
+
+        # compose a sub table from the first level data
+        first_level_tbl <- nodesets[children_of_nodes == 0L] |>
+          extract_nodesets() |>
+          data.table::as.data.table()
+
+        # remove the not needed columns from the first_level_tbl
+        not_needed_patt <- paste(
+          "^(sender|receiver)_MarketParticipant\\.",
+          "^mRID$|^type$",
+          sep = "|"
+        )
+        first_level_tbl <- first_level_tbl |>
+          dplyr::select(!dplyr::matches(match = not_needed_patt))
+
+        # compose a sub table from the second level data
+        second_level_length <- nodesets[children_of_nodes > 0L] |>
+          length()
+        prb_envir2 <- parent.frame()
+        cli::cli_progress_bar(
+          name = "converting",
+          total = second_level_length,
+          .envir = prb_envir2
+        )
+        second_level_tbl <- nodesets[children_of_nodes > 0L] |>
+          purrr::imap(
+            \(scnd_ns, idx) {
+              cli::cli_progress_update(.envir = prb_envir2)
+              # extract as named list
+              nodeset_list <- xmlconvert::xml_to_list(
+                xml = scnd_ns,
+                convert.types = FALSE
+              )
+              # collapse duplicated elements
+              if (anyDuplicated(names(nodeset_list))) {
+                dupl_lgl <- names(nodeset_list) |>
+                  duplicated()
+                dupl_col <- names(nodeset_list)[dupl_lgl] |>
+                  unique()
+                for (col in dupl_col) {
+                  indices <- which(names(nodeset_list) == col)
+                  first_idx <- indices[[1L]]
+                  rest_idx <- indices[-1L]
+                  nodeset_list[first_idx] <- paste(
+                    nodeset_list[indices],
+                    collapse = " - "
+                  )
+                  nodeset_list[rest_idx] <- NULL
+                }
+              }
+              # convert named list to table
+              data.table::as.data.table(nodeset_list)
+            }
+          ) |>
+          purrr::compact() |>
+          data.table::rbindlist(use.names = TRUE, fill = TRUE) |>
+          dplyr::rename(dplyr::any_of(c(
+            eic_code = "mRID",
+            docStatusValue = "docStatus"
+          )))
+
+        # combine the first level and the second levels tables together
+        dplyr::bind_cols(first_level_tbl, second_level_tbl)
+      },
+      error = \(e) {
+        cli::cli_abort(
+          "The XML document has an unexpected tree structure! {e}"
+        ) # nocov
+      }
+    )
+
+    if (nrow(result_tbl) == 0L) {
+      cli::cli_abort("The XML document has an unexpected tree structure!")
+    }
+
+    # rename columns to snakecase
+    names(result_tbl) <- my_snakecase(result_tbl)
+
+    # add eic_code_doc_status definitions to codes
+    result_tbl <- data.table::merge.data.table(
+      x = result_tbl,
+      y = message_types |>
+        subset(select = c("code", "title")) |>
+        setNames(nm = c("doc_status_value", "doc_status")),
+      by = "doc_status_value",
+      all.x = TRUE
+    ) |>
+      dplyr::relocate(
+        doc_status,
+        .after = doc_status_value
+      )
+
+    # return with the xml content list
+    tibble::as_tibble(result_tbl)
+  } else {
+    cli::cli_abort("{resp$error$message} {req$url}")
+  }
+}
+
+
+#' @title
+#' unpack an xml section into a tabular row
+#'
+#' @noRd
 unpack_xml <- function(section, parent_name = NULL) {
   result_vector <- xml2::as_list(section) |>
     unlist(recursive = TRUE)
   if (is.null(result_vector)) {
     tbl <- tibble::tibble()
-    return(tbl)
   } else {
     names(result_vector) <- stringr::str_c(parent_name,
-                                           xml2::xml_name(section),
-                                           names(result_vector),
-                                           sep = ".")
+      xml2::xml_name(section),
+      names(result_vector),
+      sep = "."
+    )
     tbl <- tibble::as_tibble_row(result_vector)
-    return(tbl)
   }
+  # return
+  tbl
 }
 
 
-
-# an own version of snakecase::to_snakecase() function
-# read and convert the column names of the provided data frame
-# into the required snakecase format
+#' @title
+#' an own version of snakecase::to_snakecase() function
+#'
+#' @description
+#' read and convert the column names of the provided data frame
+#' into the required snakecase format
+#'
+#' @noRd
 my_snakecase <- function(tbl) {
-  if (isFALSE(is.data.frame(tbl))) {
-    stop("The provided argument is not a valid data frame!")
-  }
+  checkmate::assert_data_frame(tbl)
   names(tbl) |>
     stringr::str_replace_all(
-      pattern = "mRID",
-      replacement = "mrid"
-    ) |>
-    stringr::str_replace_all(
-      pattern = "TimeSeries",
-      replacement = "ts"
-    ) |>
-    stringr::str_remove(pattern = "^process") |>
-    stringr::str_replace_all(
-      pattern = "unavailability_Time_Period",
-      replacement = "unavailability"
-    ) |>
-    stringr::str_replace_all(
-      pattern = "ts.[p|P]roduction_RegisteredResource.pSRType",
-      replacement = "ts.production"
-    ) |>
-    stringr::str_replace_all(
-      pattern = "ts.[p|P]roduction_RegisteredResource",
-      replacement = "ts.production"
-    ) |>
-    stringr::str_replace_all(
-      pattern = "ts.[a|A]sset_RegisteredResource.pSRType",
-      replacement = "ts.asset"
-    ) |>
-    stringr::str_replace_all(
-      pattern = "ts.[a|A]sset_RegisteredResource",
-      replacement = "ts.asset"
-    ) |>
-    stringr::str_replace_all(
-      pattern = "[p|P]owerSystemResources",
-      replacement = "psr"
+      c(
+        "mRID" = "mrid",
+        "TimeSeries" = "ts",
+        "^process" = "",
+        "unavailability_Time_Period" = "unavailability",
+        "ts.[p|P]roduction_RegisteredResource.pSRType" = "ts.production",
+        "ts.[p|P]roduction_RegisteredResource" = "ts.production",
+        "ts.[a|A]sset_RegisteredResource.pSRType" = "ts.asset",
+        "ts.[a|A]sset_RegisteredResource" = "ts.asset",
+        "[p|P]owerSystemResources" = "psr",
+        "eICCode" = "eicCode",
+        "aCERCode" = "acerCode",
+        "vATCode" = "vatCode",
+        "eICParent" = "eic_parent",
+        "eICResponsible" = "eicResponsible",
+        "EICCode_MarketDocument" = "eicCode"
+      )
     ) |>
     snakecase::to_snake_case() |>
     stringr::str_replace_all(
-      pattern = "psr_type_psr_type",
-      replacement = "psr_type"
-    ) |>
-    stringr::str_replace_all(
-      pattern = "asset_psr_type",
-      replacement = "psr_type"
-    ) |>
-    stringr::str_remove(
-      pattern = "ts_mkt_psr_type_voltage_psr_"
+      c(
+        "psr_type_psr_type" = "psr_type",
+        "asset_psr_type" = "psr_type",
+        "_direction_direction" = "_direction",
+        "eic_code_eic_code_" = "eic_code_",
+        "_names_name" = "_name",
+        "ts_mkt_psr_type_voltage_psr_" = "",
+        "_(wind|solar)_power_feedin" = "",
+        "ts_period_" = "ts_",
+        "_quantity_quantity" = "_quantity",
+        "_market_product_market_product" = "_market_product",
+        "_attribute_instance_component" = "",
+        "ts_point_constraint_ts_" = "constraint_ts_",
+        "ts_point_constraint_" = "",
+        "ts_monitored_registered_resource_" = "ts_monitored_",
+        "_ptdf_domain_p_tdf_quantity" = "_ptdf_domain_quantity",
+        "_flow_based_study_domain_flow_based_margin_quantity" =
+          "_flow_based_study_domain_margin_quantity",
+        "attribute_instance_component_attribute" =
+          "instance_component_attribute",
+        "last_request_date_and_or_time_date" = "last_request_date",
+        "eic_responsible_market_participant_mrid" =
+          "responsible_market_participant_mrid",
+        "eic_code_market_participant_vat_code_name" =
+          "market_participant_vat_code_name",
+        "eic_code_market_participant_acer_code_name" =
+          "market_participant_acer_code_name",
+        "eic_parent_market_document_mrid" = "parent_market_document_mrid"
+      )
     )
 }
 
 
-
-# detect the number of grand children per each child
-xml_grand_children_lengths <- function(xml_content) {
-  xml2::xml_children(xml_content) |> xml2::xml_length()
+#' @title
+#' create a specific merge function which adds the needed definitions
+#'
+#' @noRd
+def_merge <- function(x, y, code_name, definition_name) {
+  x <- x |>
+    data.table::data.table()
+  y <- y |>
+    subset(select = c("code", "title")) |>
+    data.table::data.table()
+  names(y) <- c(code_name, definition_name)
+  data.table::merge.data.table(
+    x = x,
+    y = y,
+    by = code_name,
+    suffixes = c("_x", "_y"),
+    all.x = TRUE
+  )
 }
 
 
+#' @title
+#' create a specific merge function which adds the EIC names
+#'
+#' @noRd
+eic_name_merge <- function(x, y, eic_code_name, eic_name_name) {
+  y <- y |>
+    subset(select = c("eic_code", "eic_name")) |>
+    data.table::data.table()
+  names(y) <- c(eic_code_name, eic_name_name)
+  data.table::merge.data.table(
+    x = x,
+    y = y,
+    by = eic_code_name,
+    all.x = TRUE
+  )
+}
 
-# add definitions to codes
-add_definitions <- function(tbl) {
-  if (isFALSE(is.data.frame(tbl))) {
-    stop("The provided argument is not a valid data frame!")
-  }
-  # define those variables as NULL which are used under non-standard evaluation
-  reason_text.x <- reason_text.y <- CODE <- DEFINITION <- NULL
-  EicCode <- EicLongName <- eic_code <- eic_long_name <- eic_name <- NULL
 
+#' @title
+#' add type names to codes
+#'
+#' @noRd
+add_type_names <- function(tbl) {
   # pre-define some built-in tables to avoid non-standard evaluation issues
   # within the current function
-  asset_types <- asset_types
-  auction_types <- auction_types
-  business_types <- business_types
-  category_types <- category_types
-  contract_types <- contract_types
-  document_types <- document_types
-  object_aggregation_types <- object_aggregation_types
-  process_types <- process_types
-  reason_code_types <- reason_code_types
+  asset_types <- entsoeapi::asset_types
+  business_types <- entsoeapi::business_types
+  contract_types <- entsoeapi::contract_types
+  message_types <- entsoeapi::message_types
+  process_types <- entsoeapi::process_types
+  role_types <- entsoeapi::role_types
+  direction_types <- entsoeapi::direction_types
+  energy_product_types <- entsoeapi::energy_product_types
 
-  # convert result_tbl to data.table in order to join faster
-  tbl <- tbl |>
-    data.table::data.table()
+  # convert tbl to data.table in order to join faster
+  tbl <- data.table::data.table(tbl)
 
-  # convert area_eic() table to data.table in order to join faster
-  area_eic_name <- area_eic()
-  area_eic_name <- area_eic_name |>
-    dplyr::select(EicCode, EicLongName) |>
-    dplyr::rename_with(snakecase::to_snake_case) |>
-    dplyr::group_by(eic_code) |>
-    dplyr::mutate(eic_name = stringr::str_c(
-      eic_long_name,
-      collapse = " - "
-    )) |>
-    dplyr::ungroup() |>
-    dplyr::select(eic_code, eic_name) |>
-    data.table::data.table()
+  # define an empty vector to collect those column names
+  # which will get definitions by add_type_names() function
+  affected_cols <- c()
+
+  # add type definitions to codes
+  if ("type" %in% names(tbl)) {
+    affected_cols <- c(affected_cols, "type")
+    tbl <- def_merge(
+      x = tbl,
+      y = message_types,
+      code_name = "type",
+      definition_name = "type_def"
+    )
+  }
+  if ("ts_business_type" %in% names(tbl)) {
+    affected_cols <- c(affected_cols, "ts_business_type")
+    tbl <- def_merge(
+      x = tbl,
+      y = business_types,
+      code_name = "ts_business_type",
+      definition_name = "ts_business_type_def"
+    )
+  }
+  if ("ts_mkt_psr_type" %in% names(tbl)) {
+    affected_cols <- c(affected_cols, "ts_mkt_psr_type")
+    tbl <- def_merge(
+      x = tbl,
+      y = asset_types,
+      code_name = "ts_mkt_psr_type",
+      definition_name = "ts_mkt_psr_type_def"
+    )
+  }
+  if ("ts_asset_psr_type" %in% names(tbl)) {
+    affected_cols <- c(affected_cols, "ts_asset_psr_type")
+    tbl <- def_merge(
+      x = tbl,
+      y = asset_types,
+      code_name = "ts_asset_psr_type",
+      definition_name = "ts_asset_psr_type_def"
+    )
+  }
+  if ("ts_production_psr_type" %in% names(tbl)) {
+    affected_cols <- c(affected_cols, "ts_production_psr_type")
+    tbl <- def_merge(
+      x = tbl,
+      y = asset_types,
+      code_name = "ts_production_psr_type",
+      definition_name = "ts_production_psr_type_def"
+    )
+  }
+  if ("process_type" %in% names(tbl)) {
+    affected_cols <- c(affected_cols, "process_type")
+    tbl <- def_merge(
+      x = tbl,
+      y = process_types,
+      code_name = "process_type",
+      definition_name = "process_type_def"
+    )
+  }
+  if ("ts_product" %in% names(tbl)) {
+    affected_cols <- c(affected_cols, "ts_product")
+    tbl <- def_merge(
+      x = tbl,
+      y = energy_product_types,
+      code_name = "ts_product",
+      definition_name = "ts_product_def"
+    )
+  }
+  if ("ts_contract_market_agreement_type" %in% names(tbl)) {
+    affected_cols <- c(affected_cols, "ts_contract_market_agreement_type")
+    tbl <- def_merge(
+      x = tbl,
+      y = contract_types,
+      code_name = "ts_contract_market_agreement_type",
+      definition_name = "ts_contract_market_agreement_type_def"
+    )
+  }
+  if ("ts_auction_type" %in% names(tbl)) {
+    auction_types <- entsoeapi::auction_types
+    affected_cols <- c(affected_cols, "ts_auction_type")
+    tbl <- def_merge(
+      x = tbl,
+      y = auction_types,
+      code_name = "ts_auction_type",
+      definition_name = "ts_auction_type_def"
+    )
+  }
+  if ("subject_market_participant_market_role_type" %in% names(tbl)) {
+    affected_cols <- c(
+      affected_cols,
+      "subject_market_participant_market_role_type"
+    )
+    tbl <- def_merge(
+      x = tbl,
+      y = role_types,
+      code_name = "subject_market_participant_market_role_type",
+      definition_name = "subject_market_participant_market_role_type_def"
+    )
+  }
+  if ("bid_ts_flow_direction" %in% names(tbl)) {
+    affected_cols <- c(affected_cols, "bid_ts_flow_direction")
+    tbl <- def_merge(
+      x = tbl,
+      y = direction_types,
+      code_name = "bid_ts_flow_direction",
+      definition_name = "bid_ts_flow_direction_def"
+    )
+  }
+  if (length(affected_cols) == 0L) {
+    cli::cli_alert_info("No additional type names added!")
+  }
+
+  tbl
+}
+
+
+#' @title
+#' get & adjust area_eic() table
+#'
+#' @description
+#' download area_eic() table & convert to data.table
+#' in order to join faster
+#'
+#' @noRd
+get_area_eic_name <- function() {
+  # define those variables as NULL which are used under non-standard evaluation
+  eic_code <- eic_long_name <- eic_name <- NULL
+
+  # compose a local 'download and transform' function
+  get_data <- function() {
+    area_eic() |>
+      subset(select = c("EicCode", "EicLongName")) |>
+      dplyr::rename_with(snakecase::to_snake_case) |>
+      dplyr::group_by(eic_code) |>
+      dplyr::mutate(
+        eic_name = stringr::str_c(
+          eic_long_name,
+          collapse = " - "
+        )
+      ) |>
+      dplyr::ungroup() |>
+      dplyr::select(eic_code, eic_name) |>
+      data.table::data.table()
+  }
+
+  # check if there is any cached value of 'area_eic_name'
+  aen_cache_key <- "area_eic_name_key"
+  if (m$exists(key = aen_cache_key)) {
+    # recall area_eic_name values
+    area_eic_name <- m$get(
+      key = aen_cache_key,
+      missing = get_data()
+    )
+  } else {
+    # download area_eic() table & convert to data.table
+    # in order to join faster
+    area_eic_name <- get_data()
+
+    # cache aen_dt as aen_cache_key
+    m$set(key = aen_cache_key, value = area_eic_name)
+  }
+
+  area_eic_name
+}
+
+
+#' @title
+#' get & adjust resource_object_eic() table
+#'
+#' @description
+#' download resource_object_eic() table & convert to data.table
+#' in order to join faster
+#'
+#' @noRd
+get_resource_object_eic <- function(
+  roe_cache_key = "resource_object_eic_name_key"
+) {
+  # define those variables as NULL which are used under non-standard evaluation
+  eic_code <- eic_long_name <- NULL
+
+  # compose a local 'download and transform' function
+  get_data <- function() {
+    resource_object_eic() |>
+      subset(select = c("EicCode", "EicLongName")) |>
+      dplyr::rename_with(snakecase::to_snake_case) |>
+      dplyr::rename(
+        ts_registered_resource_mrid = eic_code,
+        ts_registered_resource_name = eic_long_name
+      ) |>
+      data.table::data.table()
+  }
+
+
+  # check if there is any cached value of 'area_eic_name'
+  if (m$exists(key = roe_cache_key)) {
+    # recall resource_object_eic_name values
+    resource_object_eic <- m$get(
+      key = roe_cache_key,
+      missing = get_data()
+    )
+  } else {
+    # download resource_object_eic() table & convert to data.table
+    # in order to join faster
+    resource_object_eic <- get_data()
+
+    # cache roe_dt as cache_key
+    m$set(key = roe_cache_key, value = resource_object_eic)
+  }
+
+  # return
+  resource_object_eic
+}
+
+
+#' @title
+#' add names to EIC codes
+#'
+#' @noRd
+add_eic_names <- function(tbl) {
+  # convert tbl to data.table in order to join faster
+  tbl <- data.table::data.table(tbl)
+
+  # download & convert area_eic() table to data.table
+  # in order to join faster
+  area_eic_name <- get_area_eic_name()
+
+  # define an empty vector to collect those EIC column names
+  # which will get definitions by add_eic_names() function
+  affected_cols <- c()
+
+  # add names to eic codes
+  if ("ts_registered_resource_mrid" %in% names(tbl)) {
+    # download & convert resource_object_eic() table to data.table
+    # in order to join faster
+    resource_object_eic <- get_resource_object_eic()
+
+    affected_cols <- c(affected_cols, "ts_registered_resource_mrid")
+    tbl <- tbl |>
+      dplyr::select(!tidyselect::any_of("ts_registered_resource_name")) |>
+      merge(
+        y = resource_object_eic,
+        by = "ts_registered_resource_mrid",
+        all.x = TRUE
+      )
+  }
+  if ("ts_bidding_zone_domain_mrid" %in% names(tbl)) {
+    affected_cols <- c(affected_cols, "ts_bidding_zone_domain_mrid")
+    tbl <- tbl |>
+      eic_name_merge(
+        y = area_eic_name,
+        eic_code_name = "ts_bidding_zone_domain_mrid",
+        eic_name_name = "ts_bidding_zone_domain_name"
+      )
+  }
+  if ("ts_in_bidding_zone_domain_mrid" %in% names(tbl)) {
+    affected_cols <- c(affected_cols, "ts_in_bidding_zone_domain_mrid")
+    tbl <- tbl |>
+      eic_name_merge(
+        y = area_eic_name,
+        eic_code_name = "ts_in_bidding_zone_domain_mrid",
+        eic_name_name = "ts_in_bidding_zone_domain_name"
+      )
+  }
+  if ("ts_out_bidding_zone_domain_mrid" %in% names(tbl)) {
+    affected_cols <- c(affected_cols, "ts_out_bidding_zone_domain_mrid")
+    tbl <- tbl |>
+      eic_name_merge(
+        y = area_eic_name,
+        eic_code_name = "ts_out_bidding_zone_domain_mrid",
+        eic_name_name = "ts_out_bidding_zone_domain_name"
+      )
+  }
+  if ("ts_in_domain_mrid" %in% names(tbl)) {
+    affected_cols <- c(affected_cols, "ts_in_domain_mrid")
+    tbl <- tbl |>
+      eic_name_merge(
+        y = area_eic_name,
+        eic_code_name = "ts_in_domain_mrid",
+        eic_name_name = "ts_in_domain_name"
+      )
+  }
+  if ("ts_out_domain_mrid" %in% names(tbl)) {
+    affected_cols <- c(affected_cols, "ts_out_domain_mrid")
+    tbl <- tbl |>
+      eic_name_merge(
+        y = area_eic_name,
+        eic_code_name = "ts_out_domain_mrid",
+        eic_name_name = "ts_out_domain_name"
+      )
+  }
+  if ("area_domain_mrid" %in% names(tbl)) {
+    affected_cols <- c(affected_cols, "area_domain_mrid")
+    tbl <- tbl |>
+      eic_name_merge(
+        y = area_eic_name,
+        eic_code_name = "area_domain_mrid",
+        eic_name_name = "area_domain_name"
+      )
+  }
+  if ("control_area_domain_mrid" %in% names(tbl)) {
+    affected_cols <- c(affected_cols, "control_area_domain_mrid")
+    tbl <- tbl |>
+      eic_name_merge(
+        y = area_eic_name,
+        eic_code_name = "control_area_domain_mrid",
+        eic_name_name = "control_area_domain_name"
+      )
+  }
+  if ("ts_acquiring_domain_mrid" %in% names(tbl)) {
+    affected_cols <- c(affected_cols, "ts_acquiring_domain_mrid")
+    tbl <- tbl |>
+      eic_name_merge(
+        y = area_eic_name,
+        eic_code_name = "ts_acquiring_domain_mrid",
+        eic_name_name = "ts_acquiring_domain_name"
+      )
+  }
+  if ("ts_connecting_domain_mrid" %in% names(tbl)) {
+    affected_cols <- c(affected_cols, "ts_connecting_domain_mrid")
+    tbl <- tbl |>
+      eic_name_merge(
+        y = area_eic_name,
+        eic_code_name = "ts_connecting_domain_mrid",
+        eic_name_name = "ts_connecting_domain_name"
+      )
+  }
+  if ("bid_ts_acquiring_domain_mrid" %in% names(tbl)) {
+    affected_cols <- c(affected_cols, "bid_ts_acquiring_domain_mrid")
+    tbl <- tbl |>
+      eic_name_merge(
+        y = area_eic_name,
+        eic_code_name = "bid_ts_acquiring_domain_mrid",
+        eic_name_name = "bid_ts_acquiring_domain_name"
+      )
+  }
+  if ("bid_ts_connecting_domain_mrid" %in% names(tbl)) {
+    affected_cols <- c(affected_cols, "bid_ts_connecting_domain_mrid")
+    tbl <- tbl |>
+      eic_name_merge(
+        y = area_eic_name,
+        eic_code_name = "bid_ts_connecting_domain_mrid",
+        eic_name_name = "bid_ts_connecting_domain_name"
+      )
+  }
+  if ("domain_mrid" %in% names(tbl)) {
+    affected_cols <- c(affected_cols, "domain_mrid")
+    tbl <- tbl |>
+      eic_name_merge(
+        y = area_eic_name,
+        eic_code_name = "domain_mrid",
+        eic_name_name = "domain_name"
+      )
+  }
+  if ("constraint_ts_monitored_ptdf_domain_mrid" %in% names(tbl)) {
+    affected_cols <- c(
+      affected_cols, "constraint_ts_monitored_ptdf_domain_mrid"
+    )
+    tbl <- tbl |>
+      eic_name_merge(
+        y = area_eic_name,
+        eic_code_name = "constraint_ts_monitored_ptdf_domain_mrid",
+        eic_name_name = "constraint_ts_monitored_ptdf_domain_name"
+      )
+  }
+  if (length(affected_cols) == 0L) {
+    cli::cli_alert_info("No additional eic names added!")
+  }
+
+  tbl
+}
+
+
+#' @title
+#' add definitions to codes
+#'
+#' @noRd
+add_definitions <- function(tbl) {
+  # convert tbl to data.table in order to join faster
+  tbl <- data.table::data.table(tbl)
 
   # define an empty vector to collect those column names
   # which will get definitions by add_definitions() function
   affected_cols <- c()
 
   # add definitions to codes
-  if ("type" %in% names(tbl)) {
-    affected_cols <- c(affected_cols, "type")
-    tbl <- tbl |>
-      merge(y = document_types |>
-              dplyr::select(CODE, DEFINITION) |>
-              dplyr::rename(type = CODE,
-                            type_def = DEFINITION) |>
-              data.table::data.table(),
-            by = "type",
-            all.x = TRUE)
-  }
-  if ("ts_business_type" %in% names(tbl)) {
-    affected_cols <- c(affected_cols, "ts_business_type")
-    tbl <- tbl |>
-      merge(y = business_types |>
-              dplyr::select(CODE, DEFINITION) |>
-              dplyr::rename(ts_business_type = CODE,
-                            ts_business_type_def = DEFINITION) |>
-              data.table::data.table(),
-            by = "ts_business_type",
-            all.x = TRUE)
-  }
-  if ("ts_mkt_psr_type" %in% names(tbl)) {
-    affected_cols <- c(affected_cols, "ts_mkt_psr_type")
-    tbl <- tbl |>
-      merge(y = asset_types |>
-              dplyr::select(CODE, DEFINITION) |>
-              dplyr::rename(ts_mkt_psr_type = CODE,
-                            ts_mkt_psr_type_def = DEFINITION) |>
-              data.table::data.table(),
-            by = "ts_mkt_psr_type",
-            all.x = TRUE)
-  }
   if ("doc_status_value" %in% names(tbl)) {
     affected_cols <- c(affected_cols, "doc_status_value")
-    tbl <- tbl |>
-      merge(y = document_types |>
-              dplyr::select(CODE, DEFINITION) |>
-              dplyr::rename(doc_status_value = CODE,
-                            doc_status = DEFINITION) |>
-              data.table::data.table(),
-            by = "doc_status_value",
-            all.x = TRUE)
-  }
-  if ("ts_asset_psr_type" %in% names(tbl)) {
-    affected_cols <- c(affected_cols, "ts_asset_psr_type")
-    tbl <- tbl |>
-      merge(y = asset_types |>
-              dplyr::select(CODE, DEFINITION) |>
-              dplyr::rename(ts_asset_psr_type = CODE,
-                            ts_asset_psr_type_def = DEFINITION) |>
-              data.table::data.table(),
-            by = "ts_asset_psr_type",
-            all.x = TRUE)
-  }
-  if ("ts_production_psr_type" %in% names(tbl)) {
-    affected_cols <- c(affected_cols, "ts_production_psr_type")
-    tbl <- tbl |>
-      merge(y = asset_types |>
-              dplyr::select(CODE, DEFINITION) |>
-              dplyr::rename(ts_production_psr_type = CODE,
-                            ts_production_psr_type_def = DEFINITION) |>
-              data.table::data.table(),
-            by = "ts_production_psr_type",
-            all.x = TRUE)
-  }
-  if ("process_type" %in% names(tbl)) {
-    affected_cols <- c(affected_cols, "process_type")
-    tbl <- tbl |>
-      merge(y = process_types |>
-              dplyr::select(CODE, DEFINITION) |>
-              dplyr::rename(process_type = CODE,
-                            process_type_def = DEFINITION) |>
-              data.table::data.table(),
-            by = "process_type",
-            all.x = TRUE)
-  }
-  if ("ts_contract_market_agreement_type" %in% names(tbl)) {
-    affected_cols <- c(affected_cols, "ts_contract_market_agreement_type")
-    my_contract_types <- contract_types |>
-      dplyr::select(CODE, DEFINITION) |>
-      dplyr::rename(
-        ts_contract_market_agreement_type = CODE,
-        ts_contract_market_agreement_type_def = DEFINITION
-      ) |>
-      data.table::data.table()
-    tbl <- tbl |>
-      merge(y = my_contract_types,
-            by = "ts_contract_market_agreement_type",
-            all.x = TRUE)
-  }
-  if ("ts_auction_type" %in% names(tbl)) {
-    affected_cols <- c(affected_cols, "ts_auction_type")
-    tbl <- tbl |>
-      merge(y = auction_types |>
-              dplyr::select(CODE, DEFINITION) |>
-              dplyr::rename(ts_auction_type = CODE,
-                            ts_auction_type_def = DEFINITION) |>
-              data.table::data.table(),
-            by = "ts_auction_type",
-            all.x = TRUE)
+    tbl <- def_merge(
+      x = tbl,
+      y = message_types,
+      code_name = "doc_status_value",
+      definition_name = "doc_status"
+    )
   }
   if ("ts_auction_category" %in% names(tbl)) {
+    category_types <- entsoeapi::category_types
     affected_cols <- c(affected_cols, "ts_auction_category")
-    tbl <- tbl |>
-      merge(y = category_types |>
-              dplyr::select(CODE, DEFINITION) |>
-              dplyr::rename(ts_auction_category = CODE,
-                            ts_auction_category_def = DEFINITION) |>
-              data.table::data.table(),
-            by = "ts_auction_category",
-            all.x = TRUE)
+    tbl <- def_merge(
+      x = tbl,
+      y = category_types,
+      code_name = "ts_auction_category",
+      definition_name = "ts_auction_category_def"
+    )
   }
-  if ("reason_code" %in% names(tbl)) {
-    affected_cols <- c(affected_cols, "reason_code")
-    tbl <- tbl |>
-      merge(y = reason_code_types |>
-              dplyr::select(CODE, DEFINITION) |>
-              dplyr::rename(reason_code = CODE,
-                            reason_text = DEFINITION) |>
-              data.table::data.table(),
-            by = "reason_code",
-            all.x = TRUE)
-    if ("reason_text.x" %in% names(tbl) &&
-          "reason_text.y" %in% names(tbl)) {
-      tbl <- tbl |>
-        dplyr::mutate(
-          reason_text = paste(reason_text.y, reason_text.x,
-                              sep = " - "),
-          reason_text.x = NULL,
-          reason_text.y = NULL
+  if ("ts_flow_direction" %in% names(tbl)) {
+    affected_cols <- c(affected_cols, "ts_flow_direction")
+    tbl <- def_merge(
+      x = tbl,
+      y = direction_types,
+      code_name = "ts_flow_direction",
+      definition_name = "ts_flow_direction_def"
+    )
+  }
+  rc_cols <- stringr::str_subset(
+    string = names(tbl),
+    pattern = "^reason_code(|_[0-9])"
+  )
+  if (length(rc_cols) > 0) {
+    reason_code_types <- entsoeapi::reason_code_types
+    for (rc_col in rc_cols) {
+      affected_cols <- c(affected_cols, rc_col)
+      tbl <- def_merge(
+        x = tbl,
+        y = reason_code_types,
+        code_name = rc_col,
+        definition_name = stringr::str_replace(
+          string = rc_col,
+          pattern = "_code",
+          replacement = "_text"
         )
+      )
+    }
+    rt_cols <- stringr::str_subset(
+      string = names(tbl),
+      pattern = "^reason_text(|_[0-9|_x|_y])"
+    )
+    if (length(rt_cols) > 1) {
+      tbl <- tbl |>
+        tidyr::unite(
+          col = "reason_text",
+          dplyr::all_of(rt_cols),
+          sep = " - ",
+          remove = TRUE,
+          na.rm = TRUE
+        ) |>
+        tidyr::unite(
+          col = "reason_code",
+          dplyr::all_of(rc_cols),
+          sep = " - ",
+          remove = TRUE,
+          na.rm = TRUE
+        ) |>
+        data.table::data.table()
+    }
+  }
+  trc_cols <- stringr::str_subset(
+    string = names(tbl),
+    pattern = "^ts_reason_code(|_[0-9])"
+  )
+  if (length(trc_cols) > 0) {
+    reason_code_types <- entsoeapi::reason_code_types
+    for (trc_col in trc_cols) {
+      affected_cols <- c(affected_cols, trc_col)
+      tbl <- def_merge(
+        x = tbl,
+        y = reason_code_types,
+        code_name = trc_col,
+        definition_name = stringr::str_replace(
+          string = trc_col,
+          pattern = "_code",
+          replacement = "_text"
+        )
+      )
+    }
+    trt_cols <- stringr::str_subset(
+      string = names(tbl),
+      pattern = "^ts_reason_text(|_[0-9|_x|_y])"
+    )
+    if (length(trt_cols) > 1) {
+      tbl <- tbl |>
+        tidyr::unite(
+          col = "ts_reason_text",
+          dplyr::all_of(trt_cols),
+          sep = " - ",
+          remove = TRUE,
+          na.rm = TRUE
+        ) |>
+        tidyr::unite(
+          col = "ts_reason_code",
+          dplyr::all_of(trc_cols),
+          sep = " - ",
+          remove = TRUE,
+          na.rm = TRUE
+        ) |>
+        data.table::data.table()
     }
   }
   if ("ts_object_aggregation" %in% names(tbl)) {
+    object_aggregation_types <- entsoeapi::object_aggregation_types
     affected_cols <- c(affected_cols, "ts_object_aggregation")
-    tbl <- tbl |>
-      merge(y = object_aggregation_types |>
-              dplyr::select(CODE, DEFINITION) |>
-              dplyr::rename(ts_object_aggregation = CODE,
-                            ts_object_aggregation_def = DEFINITION) |>
-              data.table::data.table(),
-            by = "ts_object_aggregation",
-            all.x = TRUE)
-  }
-  if ("ts_registered_resource_mrid" %in% names(tbl)) {
-    affected_cols <- c(affected_cols, "ts_registered_resource_mrid")
-    resource_object_eic <- resource_object_eic() |>
-      dplyr::select(EicCode, EicLongName) |>
-      dplyr::rename(ts_registered_resource_mrid = EicCode,
-                    ts_registered_resource_name = EicLongName) |>
-      data.table::data.table()
-    tbl <- tbl |>
-      dplyr::select(
-        purrr::discard(
-          names(tbl),
-          identical,
-          y = "ts_registered_resource_name"
-        )
-      ) |>
-      merge(y = resource_object_eic,
-            by = "ts_registered_resource_mrid",
-            all.x = TRUE)
-  }
-  if ("ts_bidding_zone_domain_mrid" %in% names(tbl)) {
-    affected_cols <- c(affected_cols, "ts_bidding_zone_domain_mrid")
-    tbl <- tbl |>
-      merge(y = area_eic_name |>
-              dplyr::rename(ts_bidding_zone_domain_name = eic_name,
-                            ts_bidding_zone_domain_mrid = eic_code),
-            by = "ts_bidding_zone_domain_mrid",
-            all.x = TRUE)
-  }
-  if ("ts_in_bidding_zone_domain_mrid" %in% names(tbl)) {
-    affected_cols <- c(affected_cols, "ts_in_bidding_zone_domain_mrid")
-    tbl <- tbl |>
-      merge(y = area_eic_name |>
-              dplyr::rename(ts_in_bidding_zone_domain_name = eic_name,
-                            ts_in_bidding_zone_domain_mrid = eic_code),
-            by = "ts_in_bidding_zone_domain_mrid",
-            all.x = TRUE)
-  }
-  if ("ts_out_bidding_zone_domain_mrid" %in% names(tbl)) {
-    affected_cols <- c(affected_cols, "ts_out_bidding_zone_domain_mrid")
-    tbl <- tbl |>
-      merge(y = area_eic_name |>
-              dplyr::rename(ts_out_bidding_zone_domain_name = eic_name,
-                            ts_out_bidding_zone_domain_mrid = eic_code),
-            by = "ts_out_bidding_zone_domain_mrid",
-            all.x = TRUE)
-  }
-  if ("ts_in_domain_mrid" %in% names(tbl)) {
-    affected_cols <- c(affected_cols, "ts_in_domain_mrid")
-    tbl <- tbl |>
-      merge(y = area_eic_name |>
-              dplyr::rename(ts_in_domain_name = eic_name,
-                            ts_in_domain_mrid = eic_code),
-            by = "ts_in_domain_mrid",
-            all.x = TRUE)
-  }
-  if ("ts_out_domain_mrid" %in% names(tbl)) {
-    affected_cols <- c(affected_cols, "ts_out_domain_mrid")
-    tbl <- tbl |>
-      merge(y = area_eic_name |>
-              dplyr::rename(ts_out_domain_name = eic_name,
-                            ts_out_domain_mrid = eic_code),
-            by = "ts_out_domain_mrid",
-            all.x = TRUE)
-  }
-  if ("control_area_domain_mrid" %in% names(tbl)) {
-    affected_cols <- c(affected_cols, "control_area_domain_mrid")
-    tbl <- tbl |>
-      merge(y = area_eic_name |>
-              dplyr::rename(control_area_domain_name = eic_name,
-                            control_area_domain_mrid = eic_code),
-            by = "control_area_domain_mrid",
-            all.x = TRUE)
-  }
-  if (length(affected_cols) == 0L) {
-    warning(
-      "column names: ",
-      paste(names(tbl), collapse = " - "),
-      "\n  No additional definitions added!"
+    tbl <- def_merge(
+      x = tbl,
+      y = object_aggregation_types,
+      code_name = "ts_object_aggregation",
+      definition_name = "ts_object_aggregation_def"
     )
   }
+  if (length(affected_cols) == 0L) {
+    cli::cli_alert_info("No additional definitions added!")
+  }
 
-  return(tbl)
+  tbl
 }
 
 
-
-# convert xml content to table
+#' @title
+#' convert xml content to table new version
+#'
+#' @noRd
 xml_to_table <- function(xml_content, tidy_output = FALSE) {
-  if (isFALSE(inherits(x = xml_content, what = "xml_document"))) {
-    stop("The 'xml_content' should be an xml document!")
+  is_xml_document <- inherits(x = xml_content, what = "xml_document")
+  if (isFALSE(is_xml_document)) {
+    cli::cli_abort("The 'xml_content' should be an xml document!")
   }
 
-  # define those variables as NULL which are used under non-standard evaluation
-  start_dt <- qty <- NULL
+  # extract nodesets from the XML document and process
+  result_tbl <- tryCatch(
+    expr = xml2::xml_contents(xml_content) |> extract_leaf_twig_branch(),
+    error = \(e) {
+      cli::cli_abort("The XML document has an unexpected tree structure! {e}")
+    }
+  )
 
-  # pick those children which have less then 3 grand child(ren)
-  ridge_ind <- which(xml_grand_children_lengths(xml_content) <= 2)
-  ridge_children <- xml2::xml_children(xml_content)[ridge_ind]
-
-  # unpack each ridge child and bind them as columns
-  ridge_tbl <- ridge_children |>
-    purrr::map(unpack_xml, parent_name = NULL) |>
-    dplyr::bind_cols()
-
-  # drop the not necessary sender/receiver market participant columns
-  ridge_tbl <- ridge_tbl |>
-    dplyr::select(!dplyr::starts_with(match = "sender_MarketParticipant")) |>
-    dplyr::select(!dplyr::starts_with(match = "receiver_MarketParticipant"))
+  # merge the related date and time columns into datetime column
+  for (pref in c("start_", "end_")) {
+    date_col <- stringr::str_subset(
+      string = names(result_tbl),
+      pattern = paste0(pref, "DateAndOrTime\\.date")
+    )
+    time_col <- stringr::str_subset(
+      string = names(result_tbl),
+      pattern = paste0(pref, "DateAndOrTime\\.time")
+    )
+    if (length(date_col) == 1L && length(time_col) == 1L) {
+      datetime_col <- date_col |>
+        stringr::str_remove_all(pattern = "AndOr|\\.date$")
+      result_tbl[[datetime_col]] <- stringr::str_c(
+        result_tbl[[date_col]],
+        result_tbl[[time_col]],
+        sep = "T"
+      )
+      result_tbl <- result_tbl |>
+        dplyr::select(!tidyselect::all_of(c(date_col, time_col)))
+    }
+  }
 
   # convert datetime-like columns to POSIXct and numeric-like columns to numeric
-  ridge_tbl <- ridge_tbl |>
+  result_tbl <- result_tbl |>
     dplyr::mutate(
-      dplyr::across(tidyselect::matches("[t|T]ime$|start$|end$"),
-                    ~as.POSIXct(x = .x,
-                                tryFormats = c("%Y-%m-%dT%H:%MZ",
-                                               "%Y-%m-%dT%H:%M:%SZ"),
-                                tz = "UTC"))
+      dplyr::across(
+        tidyselect::matches("[t|T]ime$|start$|end$"),
+        ~ as.POSIXct(
+          x = .x,
+          tryFormats = c(
+            "%Y-%m-%dT%H:%MZ", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%OSZ"
+          ),
+          tz = "UTC"
+        )
+      )
     ) |>
     dplyr::mutate(
-      dplyr::across(tidyselect::matches("number$|position$|quantity$|ts_mrid"),
-                    ~as.numeric(x = .x))
+      dplyr::across(
+        tidyselect::matches(
+          match = "number$|position$|quantity$|nominalP$|amount$",
+          ignore.case = TRUE
+        ),
+        ~ as.numeric(x = .x)
+      )
     )
 
-  # pick those children which have more than 2 grand children
-  det_ind <- which(xml_grand_children_lengths(xml_content) > 2)
-  det_children <- xml2::xml_children(xml_content)[det_ind]
-
-  # unpack each detailed child and bind them as rows
-  det_tbl <- det_children |>
-    purrr::map(\(det_child) {
-      # extract the name of the det_child xml element
-      det_child_name <- xml2::xml_name(det_child)
-
-      # extract the grand children elements of current child element
-      det_grand_children <- xml2::xml_children(det_child)
-
-      # divide det_grand_children into 2 parts
-      # based on their name endings
-      det_grand_children_names <- xml2::xml_name(det_grand_children)
-      ps_ind <- which(
-        endsWith(
-          x = det_grand_children_names,
-          suffix = "Period"
+  # if 'TimeSeries.mRID' can be converted to numeric then convert it
+  ts_mrid_is_in <- "TimeSeries.mRID" %in% names(result_tbl)
+  if (ts_mrid_is_in) {
+    ts_mrid_is_num <- stringr::str_detect(
+      string = result_tbl[["TimeSeries.mRID"]],
+      pattern = "^[0-9]+$"
+    ) |>
+      all()
+    if (ts_mrid_is_num) {
+      result_tbl <- result_tbl |>
+        dplyr::mutate(
+          TimeSeries.mRID = as.numeric(x = TimeSeries.mRID)
         )
-      )
-      nps_ind <- which(
-        !endsWith(
-          x = det_grand_children_names,
-          suffix = "Period"
-        )
-      )
-      det_grand_children_ps <- det_grand_children[ps_ind]
-      det_grand_children_nps <- det_grand_children[nps_ind]
-
-      # iterate over the detailed grand children and bind them as columns
-      res_dt_ps <- det_grand_children_ps |>
-        purrr::map(\(det_grand_child_ps) {
-
-          # extract elements
-          det_grand_grand_children_ps <- xml2::xml_children(
-            det_grand_child_ps
-          )
-
-          # detect which child NOT contains data points
-          not_point_ind <- which(
-            xml2::xml_name(det_grand_grand_children_ps) != "Point"
-          )
-          np_tbl <- det_grand_grand_children_ps[not_point_ind] |>
-            purrr::map(unpack_xml, parent_name = det_child_name) |>
-            dplyr::bind_cols()
-
-          # convert the datetime-like columns to POSIXct
-          np_tbl <- np_tbl |>
-            dplyr::mutate(
-              dplyr::across(tidyselect::matches("Time$|start$|end$"),
-                            ~as.POSIXct(x = .x,
-                                        tryFormats = c("%Y-%m-%dT%H:%MZ",
-                                                       "%Y-%m-%dT%H:%M:%SZ"),
-                                        tz = "UTC"))
-            )
-
-          # detect which child contains data points
-          point_ind <- which(
-            xml2::xml_name(det_grand_grand_children_ps) == "Point"
-          )
-
-          # unpack each datapoint xml each by each and append them
-          p_tbl <- det_grand_grand_children_ps[point_ind] |>
-            purrr::map(unpack_xml, parent_name = det_child_name) |>
-            dplyr::bind_rows()
-
-          # convert all data point columns to numeric
-          p_tbl <- p_tbl |>
-            dplyr::mutate(dplyr::across(dplyr::everything(), as.numeric))
-
-          # if tidy output is needed, then
-          if (tidy_output == TRUE) {
-            if ("TimeSeries.Point.price.amount" %in% names(p_tbl)) {
-              p_tbl <- dt_seq_helper(
-                from = np_tbl$TimeSeries.timeInterval.start,
-                to = np_tbl$TimeSeries.timeInterval.end,
-                seq_resolution = np_tbl$TimeSeries.resolution,
-                pos = p_tbl$TimeSeries.Point.position,
-                qty = p_tbl$TimeSeries.Point.price.amount
-              ) |>
-                dplyr::rename(ts_point_dt_start = start_dt,
-                              ts_point_price = qty)
-            } else {
-              p_tbl <- dt_seq_helper(
-                from = np_tbl$TimeSeries.timeInterval.start,
-                to = np_tbl$TimeSeries.timeInterval.end,
-                seq_resolution = np_tbl$TimeSeries.resolution,
-                pos = p_tbl$TimeSeries.Point.position,
-                qty = p_tbl$TimeSeries.Point.quantity
-              ) |>
-                dplyr::rename(ts_point_dt_start = start_dt,
-                              ts_point_quantity = qty)
-            }
-          } else {
-            names(p_tbl) <- my_snakecase(tbl = p_tbl)
-            p_tbl <- p_tbl |>
-              tidyr::nest(.key = "ts_point")
-          }
-
-          # return with the column-wise appended results
-          return(dplyr::bind_cols(np_tbl, p_tbl))
-
-        }) |>
-        data.table::rbindlist(use.names = TRUE, fill = TRUE)
-
-      # iterate over the detailed grand children and bind them as columns
-      res_dt_nps <- det_grand_children_nps |>
-        purrr::map(\(det_grand_child_nps) {
-          # unpack xml into table and convert numeric-like columns to numeric
-          unpack_xml(
-            section = det_grand_child_nps,
-            parent_name = det_child_name
-          ) |>
-            dplyr::mutate(
-              dplyr::across(
-                tidyselect::matches(
-                  "TimeSeries.mRID$|\\.nominalP$"
-                ),
-                as.numeric
-              )
-            )
-        }) |>
-        dplyr::bind_cols(.name_repair = "minimal")
-
-      # check if there are multiple reason codes and/or texts
-      dupl_reason <- base::intersect(
-        x = names(res_dt_nps)[names(res_dt_nps) |> duplicated()],
-        y = c("TimeSeries.Reason.code", "TimeSeries.Reason.text")
-      )
-      # if so, then ...
-      for (col in dupl_reason) {
-        # collapse the multiple values
-        indices <- which(names(res_dt_nps) == col)
-        first_idx <- indices[1]
-        rest_idx <- base::setdiff(x = indices, y = first_idx)
-        res_dt_nps[, first_idx] <- paste(res_dt_nps[, indices],
-                                         collapse = "|")
-        res_dt_nps[, rest_idx] <- NULL
-      }
-
-      # return with the column-wise appended results
-      if (ncol(res_dt_ps) > 0L) {
-        return(dplyr::bind_cols(res_dt_nps, res_dt_ps))
-      } else {
-        return(res_dt_nps)
-      }
-
-    }) |>
-    data.table::rbindlist(use.names = TRUE, fill = TRUE)
-
-  # compose the result table from ridge and the detailed family table
-  if (ncol(ridge_tbl) && ncol(det_tbl)) {
-    result_tbl <- dplyr::bind_cols(ridge_tbl, det_tbl)
-  } else if (ncol(ridge_tbl)) {
-    result_tbl <- ridge_tbl
-  } else if (ncol(det_tbl)) {
-    result_tbl <- det_tbl
+    }
   }
 
   # rename columns to snakecase
   names(result_tbl) <- my_snakecase(tbl = result_tbl)
 
+  # adjust the table according to tidy_output value
+  result_tbl <- tidy_or_not(
+    tbl = result_tbl,
+    tidy_output = tidy_output
+  )
+
+  # add type names to codes
+  result_tbl <- add_type_names(tbl = result_tbl)
+
+  # add eic names to eic codes
+  result_tbl <- add_eic_names(tbl = result_tbl)
+
   # add definitions to codes
   result_tbl <- add_definitions(tbl = result_tbl)
 
   # select and reorder columns
-  needed_cols <- c("ts_bidding_zone_domain_mrid",
-                   "ts_bidding_zone_domain_name",
-                   "ts_in_bidding_zone_domain_mrid",
-                   "ts_in_bidding_zone_domain_name",
-                   "ts_out_bidding_zone_domain_mrid",
-                   "ts_out_bidding_zone_domain_name",
-                   "control_area_domain_mrid",
-                   "ts_in_domain_mrid", "ts_in_domain_name",
-                   "ts_out_domain_mrid", "ts_out_domain_name",
-                   "ts_production_mrid", "ts_production_name",
-                   "ts_production_psr_mrid",
-                   "ts_production_psr_name",
-                   "doc_status_value", "doc_status",
-                   "ts_mkt_psr_type_psr_mrid",
-                   "ts_mkt_psr_type_psr_name",
-                   "ts_registered_resource_mrid",
-                   "ts_registered_resource_name",
-                   "ts_asset_location_name",
-                   "ts_asset_mrid", "ts_asset_name",
-                   "ts_production_mrid", "ts_production_name",
-                   "type", "type_def", "process_type",
-                   "process_type_def",
-                   "ts_contract_market_agreement_type",
-                   "ts_contract_market_agreement_type_def",
-                   "ts_auction_mrid", "ts_auction_type",
-                   "ts_auction_type_def",
-                   "ts_auction_category",
-                   "ts_auction_category_def",
-                   "ts_object_aggregation",
-                   "ts_object_aggregation_def",
-                   "ts_business_type", "ts_business_type_def",
-                   "ts_mkt_psr_type", "ts_mkt_psr_type_def",
-                   "ts_asset_psr_type", "ts_asset_psr_type_def",
-                   "ts_production_psr_type",
-                   "ts_production_psr_type_def",
-                   "created_date_time", "reason_code",
-                   "reason_text", "ts_reason_code", "ts_reason_text",
-                   "revision_number",
-                   "time_period_time_interval_start",
-                   "time_period_time_interval_end",
-                   "unavailability_time_interval_start",
-                   "unavailability_time_interval_end",
-                   "ts_resolution", "ts_time_interval_start",
-                   "ts_time_interval_end", "ts_mrid",
-                   "ts_point", "ts_point_dt_start",
-                   "ts_production_psr_nominal_p",
-                   "ts_point_quantity", "ts_point_price",
-                   "ts_currency_unit_name",
-                   "ts_price_measure_unit_name",
-                   "ts_quantity_measure_unit_name",
-                   "high_voltage_limit")
-  needed_cols <- base::intersect(x = needed_cols,
-                                 y = names(result_tbl))
+  needed_cols <- c(
+    "ts_bidding_zone_domain_mrid",
+    "ts_bidding_zone_domain_name",
+    "ts_in_bidding_zone_domain_mrid",
+    "ts_in_bidding_zone_domain_name",
+    "ts_out_bidding_zone_domain_mrid",
+    "ts_out_bidding_zone_domain_name",
+    "domain_mrid",
+    "domain_name",
+    "area_domain_mrid",
+    "area_domain_name",
+    "control_area_domain_mrid",
+    "control_area_domain_name",
+    "ts_in_domain_mrid", "ts_in_domain_name",
+    "ts_out_domain_mrid", "ts_out_domain_name",
+    "ts_production_mrid", "ts_production_name",
+    "ts_production_psr_mrid",
+    "ts_production_psr_name",
+    "ts_connecting_domain_mrid",
+    "ts_connecting_domain_name",
+    "ts_acquiring_domain_mrid",
+    "ts_acquiring_domain_name",
+    "bid_ts_connecting_domain_mrid",
+    "bid_ts_connecting_domain_name",
+    "bid_ts_acquiring_domain_mrid",
+    "bid_ts_acquiring_domain_name",
+    "bid_ts_mrid", "bid_ts_auction_mrid",
+    "ts_product", "ts_product_def",
+    "doc_status_value", "doc_status",
+    "ts_mkt_psr_type_psr_mrid",
+    "ts_mkt_psr_type_psr_name",
+    "ts_registered_resource_mrid",
+    "ts_registered_resource_name",
+    "ts_asset_location_name",
+    "ts_asset_mrid", "ts_asset_name",
+    "ts_production_mrid", "ts_production_name",
+    "ts_production_location_name",
+    "subject_market_participant_market_role_type",
+    "subject_market_participant_market_role_type_def",
+    "type", "type_def", "process_type",
+    "process_type_def",
+    "ts_contract_market_agreement_type",
+    "ts_contract_market_agreement_type_def",
+    "ts_auction_mrid", "ts_auction_type",
+    "ts_auction_type_def",
+    "ts_auction_category",
+    "ts_auction_category_def",
+    "ts_object_aggregation",
+    "ts_object_aggregation_def",
+    "ts_flow_direction", "ts_flow_direction_def",
+    "bid_ts_flow_direction", "bid_ts_flow_direction_def",
+    "ts_business_type", "ts_business_type_def",
+    "ts_mkt_psr_type", "ts_mkt_psr_type_def",
+    "ts_asset_psr_type", "ts_asset_psr_type_def",
+    "ts_psr_type", "ts_psr_type_def",
+    "ts_production_psr_type",
+    "ts_production_psr_type_def",
+    "created_date_time",
+    "reason_code", "reason_text",
+    "ts_reason_code", "ts_reason_text",
+    "revision_number",
+    "time_period_time_interval_start",
+    "time_period_time_interval_end",
+    "unavailability_time_interval_start",
+    "unavailability_time_interval_end",
+    "reserve_bid_period_time_interval_start",
+    "reserve_bid_period_time_interval_end",
+    "ts_resolution", "bid_ts_resolution",
+    "ts_available_period_resolution",
+    "ts_time_interval_start",
+    "ts_time_interval_end",
+    "bid_ts_time_interval_start",
+    "bid_ts_time_interval_end",
+    "ts_mrid", "bid_ts_mrid", "bid_ts_auction_mrid",
+    "ts_point", "bid_ts_point", "ts_point_dt_start",
+    "bid_ts_point_dt_start",
+    "ts_production_psr_nominal_p",
+    "ts_point_quantity", "bid_ts_point_quantity",
+    "ts_available_period_point_quantity",
+    "ts_point_price", "ts_point_price_amount",
+    "bid_ts_point_energy_price_amount",
+    "ts_point_congestion_cost",
+    "ts_currency_unit_name",
+    "bid_ts_currency_unit_name",
+    "ts_price_measure_unit_name",
+    "bid_ts_price_measure_unit_name",
+    "ts_quantity_measure_unit_name",
+    "bid_ts_quantity_measure_unit_name",
+    "high_voltage_limit",
+    "ts_classification_sequence_position",
+    "constraint_ts_monitored_ptdf_domain_mrid",
+    "constraint_ts_monitored_ptdf_domain_name",
+    "constraint_ts_monitored_ptdf_domain_quantity",
+    "constraint_ts_monitored_flow_based_study_domain_margin_quantity"
+  )
+  needed_cols <- base::intersect(
+    x = needed_cols,
+    y = names(result_tbl)
+  )
 
   # check if any columns left to keep
   if (length(needed_cols)) {
     # filter on the needed columns
     result_tbl <- result_tbl |>
-      dplyr::select(dplyr::all_of(needed_cols))
+      dplyr::select(tidyselect::all_of(needed_cols))
 
     # reorder the rows
-    sort_cols <- base::intersect(x = c("created_date_time", "ts_mrid",
-                                       "ts_business_type", "ts_mkt_psr_type",
-                                       "ts_time_interval_start",
-                                       "ts_point_dt_start"),
-                                 y = names(result_tbl))
-    data.table::setorderv(x = result_tbl, cols = sort_cols)
+    sort_cols <- base::intersect(
+      x = c(
+        "created_date_time", "ts_mrid",
+        "ts_business_type", "ts_mkt_psr_type",
+        "ts_time_interval_start",
+        "ts_point_dt_start"
+      ),
+      y = names(result_tbl)
+    )
+    result_dtbl <- data.table::as.data.table(result_tbl)
+    data.table::setkeyv(x = result_dtbl, cols = sort_cols)
 
     # convert the result to tibble
-    result_tbl <- tibble::as_tibble(result_tbl)
+    result_tbl <- tibble::as_tibble(result_dtbl)
 
-    return(result_tbl)
+    # return
+    result_tbl
   } else {
-    stop("There is no interesting columns in the result table!")
+    cli::cli_abort("There is no interesting column in the result table!")
   }
-
 }
 
 
-
-# extract the response
+#' @title
+#' extract the response from content list
+#'
+#' @noRd
 extract_response <- function(content, tidy_output = TRUE) {
-
   # check if the content is in the required list format
-  if (is.list(content) &&
-        length(content) == 2L &&
-        all(names(content) == c("result", "error"))) {
-
+  is_in_format <- is.list(content) &&
+    length(content) == 2L &&
+    all(names(content) == c("result", "error"))
+  if (is_in_format) {
     # extract the possible failure reason
     reason <- content$error
 
     # if valid content got
     if (is.null(reason)) {
+      # check if the response is list
+      result_is_list <- inherits(x = content$result, what = "list")
 
-      # if the response is not list, then convert it to list
-      if (inherits(x = content$result, what = "list")) {
-        # convert XMLs to tables
+      # if the response is list, then convert the XML elements
+      # to table in a loop and append them to a single table
+      if (result_is_list) {
+        # convert XMLs to one table
         response_length <- length(content$result)
-        result_tbl <- purrr::imap(content$result,
-                                  \(x, idx) {
-                                    times <- response_length - idx + 1
-                                    message(
-                                      idx, " ", rep(x = "<", times = times)
-                                    )
-                                    xml_to_table(
-                                      xml_content = x,
-                                      tidy_output = tidy_output
-                                    )
-                                  }) |>
+        prb_envir <- parent.frame()
+        cli::cli_progress_bar(
+          name = "processing xml list",
+          total = response_length,
+          .envir = prb_envir
+        )
+        result_tbl <- content$result |>
+          purrr::imap(
+            \(x, idx) {
+              cli::cli_progress_update(.envir = prb_envir)
+              if (is.null(x)) {
+                NULL
+              } else {
+                if (inherits(x = x, what = "list")) {
+                  all_doc <- purrr::map_lgl(
+                    x, inherits,
+                    what = "xml_document"
+                  ) |>
+                    all()
+                  if (all_doc) {
+                    purrr::map(
+                      x, xml_to_table,
+                      tidy_output = tidy_output
+                    ) |>
+                      purrr::compact() |>
+                      data.table::rbindlist(
+                        use.names = TRUE,
+                        fill = TRUE
+                      )
+                  } else {
+                    NULL
+                  }
+                } else {
+                  xml_to_table(
+                    xml_content = x,
+                    tidy_output = tidy_output
+                  )
+                }
+              }
+            }
+          ) |>
+          purrr::compact() |>
           data.table::rbindlist(use.names = TRUE, fill = TRUE) |>
           tibble::as_tibble()
       } else {
+        # convert XML to table
         result_tbl <- xml_to_table(
           xml_content = content$result,
           tidy_output = tidy_output
         )
       }
-      return(result_tbl)
 
+      # return
+      result_tbl
     } else {
-
-      # return with an empty table
-      stop(reason)
-
+      cli::cli_abort(reason$message)
     }
   } else {
-
-    stop("The content is not in the required list format!")
-
+    cli::cli_abort("The content is not in the required list format!")
   }
+}
+
+
+#' @title
+#' check if the Entso-e API provider is up and ready
+#'
+#' @noRd
+there_is_provider <- function(
+  api_scheme = "https://",
+  api_domain = "web-api.tp.entsoe.eu/",
+  api_name = "api?"
+) {
+  req <- paste0(
+    api_scheme, api_domain, api_name, "foo=bar&securityToken=baz"
+  ) |>
+    httr2::request() |>
+    httr2::req_method(method = "GET") |>
+    httr2::req_retry(max_tries = 1L)
+  resp <- req_perform_safe(req)
+  if (resp$error$message == "HTTP 401 Unauthorized.") TRUE else FALSE
 }

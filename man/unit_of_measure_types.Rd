@@ -3,21 +3,20 @@
 \docType{data}
 \name{unit_of_measure_types}
 \alias{unit_of_measure_types}
-\title{List Unit of Measure Types}
+\title{List unit of measure types based on
+'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'}
 \format{
-An object of class \code{data.table} (inherits from \code{data.frame}) with 14 rows and 3 columns.
+An object of class \code{data.table} (inherits from \code{data.frame}) with 33 rows and 3 columns.
 }
 \usage{
 unit_of_measure_types
 }
 \description{
-List Unit of Measure Types
+List unit of measure types based on
+'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 }
 \examples{
-
-library(entsoeapi)
-
-str(unit_of_measure_types)
+dplyr::glimpse(entsoeapi::unit_of_measure_types)
 
 }
 \keyword{datasets}

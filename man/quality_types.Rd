@@ -3,21 +3,20 @@
 \docType{data}
 \name{quality_types}
 \alias{quality_types}
-\title{List Quality Types}
+\title{List quality types based on
+'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'}
 \format{
-An object of class \code{data.table} (inherits from \code{data.frame}) with 5 rows and 3 columns.
+An object of class \code{data.table} (inherits from \code{data.frame}) with 7 rows and 3 columns.
 }
 \usage{
 quality_types
 }
 \description{
-List Quality Types
+List quality types based on
+'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 }
 \examples{
-
-library(entsoeapi)
-
-str(quality_types)
+dplyr::glimpse(entsoeapi::quality_types)
 
 }
 \keyword{datasets}

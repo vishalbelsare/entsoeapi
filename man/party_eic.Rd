@@ -6,6 +6,13 @@
 \usage{
 party_eic()
 }
+\value{
+A tibble of accordingly filtered EIC codes, which contains such columns as
+\code{EicCode}, \code{EicDisplayName}, \code{EicLongName}, \code{EicParent},
+\code{EicResponsibleParty}, \code{EicStatus}, \code{MarketParticipantPostalCode},
+\code{MarketParticipantIsoCountryCode}, \code{MarketParticipantVatCode},
+\code{EicTypeFunctionList} and \code{type}.
+}
 \description{
 This function downloads approved party X
 energy identification codes from this site:
@@ -13,11 +20,8 @@ https://www.entsoe.eu/data/energy-identification-codes-eic/eic-approved-codes
 It covers market participants.
 }
 \examples{
+eic_party <- entsoeapi::party_eic()
 
-library(entsoeapi)
-
-eic_party <- party_eic()
-
-str(eic_party)
+dplyr::glimpse(eic_party)
 
 }

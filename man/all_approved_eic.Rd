@@ -6,19 +6,23 @@
 \usage{
 all_approved_eic()
 }
+\value{
+A tibble of accordingly filtered EIC codes, which contains such columns as
+\code{EicCode}, \code{EicDisplayName}, \code{EicLongName}, \code{EicParent},
+\code{EicResponsibleParty}, \code{EicStatus}, \code{MarketParticipantPostalCode},
+\code{MarketParticipantIsoCountryCode}, \code{MarketParticipantVatCode},
+\code{EicTypeFunctionList} and \code{type}.
+}
 \description{
-This function downloads approved all
+This function downloads all approved
 energy identification codes from this site:
 https://www.entsoe.eu/data/energy-identification-codes-eic/eic-approved-codes
 Further details are under:
 https://www.entsoe.eu/data/energy-identification-codes-eic/#eic-documentation
 }
 \examples{
+eic_all <- entsoeapi::all_approved_eic()
 
-library(entsoeapi)
-
-eic_all <- all_approved_eic()
-
-str(eic_all)
+dplyr::glimpse(eic_all)
 
 }

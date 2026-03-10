@@ -6,6 +6,13 @@
 \usage{
 location_eic()
 }
+\value{
+A tibble of accordingly filtered EIC codes, which contains such columns as
+\code{EicCode}, \code{EicDisplayName}, \code{EicLongName}, \code{EicParent},
+\code{EicResponsibleParty}, \code{EicStatus}, \code{MarketParticipantPostalCode},
+\code{MarketParticipantIsoCountryCode}, \code{MarketParticipantVatCode},
+\code{EicTypeFunctionList} and \code{type}.
+}
 \description{
 This function downloads approved location V
 energy identification codes from this site:
@@ -13,11 +20,8 @@ https://www.entsoe.eu/data/energy-identification-codes-eic/eic-approved-codes
 It covers an endpoint, or an IT-system.
 }
 \examples{
+eic_location <- entsoeapi::location_eic()
 
-library(entsoeapi)
-
-eic_location <- location_eic()
-
-str(eic_location)
+dplyr::glimpse(eic_location)
 
 }

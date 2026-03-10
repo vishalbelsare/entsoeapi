@@ -3,21 +3,20 @@
 \docType{data}
 \name{process_types}
 \alias{process_types}
-\title{List Process Types}
+\title{List process types based on
+'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'}
 \format{
-An object of class \code{data.table} (inherits from \code{data.frame}) with 51 rows and 3 columns.
+An object of class \code{data.table} (inherits from \code{data.frame}) with 75 rows and 3 columns.
 }
 \usage{
 process_types
 }
 \description{
-List Process Types
+List process types based on
+'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 }
 \examples{
-
-library(entsoeapi)
-
-str(process_types)
+dplyr::glimpse(entsoeapi::process_types)
 
 }
 \keyword{datasets}

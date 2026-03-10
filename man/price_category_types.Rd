@@ -3,21 +3,20 @@
 \docType{data}
 \name{price_category_types}
 \alias{price_category_types}
-\title{List Price Category Types}
+\title{List price category types based on
+'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'}
 \format{
-An object of class \code{data.table} (inherits from \code{data.frame}) with 7 rows and 3 columns.
+An object of class \code{data.table} (inherits from \code{data.frame}) with 8 rows and 3 columns.
 }
 \usage{
 price_category_types
 }
 \description{
-List Price Category Types
+List price category types based on
+'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 }
 \examples{
-
-library(entsoeapi)
-
-str(price_category_types)
+dplyr::glimpse(entsoeapi::price_category_types)
 
 }
 \keyword{datasets}

@@ -25,16 +25,20 @@ i.e. CTA|DE(50Hertz), CTA|DE(Amprion), CTA|DE(TeneTGer),
 CTA|DE(TransnetBW),CTA|AT,CTA|LU but not per bidding zone.)}
 
 \item{period_start}{the starting date of the in-scope period
-in POSIXct or YYYY-MM-DD HH:MM:SS format}
+in POSIXct or YYYY-MM-DD HH:MM:SS format
+One year range limit applies}
 
 \item{period_end}{the ending date of the outage in-scope period
-in POSIXct or YYYY-MM-DD HH:MM:SS format}
+in POSIXct or YYYY-MM-DD HH:MM:SS format
+One year range limit applies}
 
 \item{period_start_update}{notification submission/update starting date
-in POSIXct or YYYY-MM-DD HH:MM:SS format}
+in POSIXct or YYYY-MM-DD HH:MM:SS format
+One year range limit applies}
 
 \item{period_end_update}{notification submission/update ending date
-in POSIXct or YYYY-MM-DD HH:MM:SS format}
+in POSIXct or YYYY-MM-DD HH:MM:SS format
+One year range limit applies}
 
 \item{doc_status}{Notification document status. "A05" for active,
 "A09" for cancelled and "A13" for withdrawn.
@@ -55,14 +59,12 @@ aggregated according to the market time unit. The list of
 specific consumption units are not provided.
 }
 \examples{
+df <- entsoeapi::outages_cons_units(
+  eic = "10YFI-1--------U",
+  period_start = lubridate::ymd(x = "2024-04-10", tz = "CET"),
+  period_end = lubridate::ymd(x = "2024-04-11", tz = "CET")
+)
 
-library(entsoeapi)
-library(lubridate)
-
-df <- outages_cons_units(eic          = "10YFI-1--------U",
-                         period_start = ymd(x = "2024-04-10", tz = "CET"),
-                         period_end   = ymd(x = "2024-04-11", tz = "CET"))
-
-str(df)
+dplyr::glimpse(df)
 
 }

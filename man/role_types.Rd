@@ -3,21 +3,20 @@
 \docType{data}
 \name{role_types}
 \alias{role_types}
-\title{List Role Types}
+\title{List role types based on
+'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'}
 \format{
-An object of class \code{data.table} (inherits from \code{data.frame}) with 41 rows and 3 columns.
+An object of class \code{data.table} (inherits from \code{data.frame}) with 59 rows and 3 columns.
 }
 \usage{
 role_types
 }
 \description{
-List Role Types
+List role types based on
+'https://www.entsoe.eu/Documents/EDI/Library/CodelistV94.zip'
 }
 \examples{
-
-library(entsoeapi)
-
-str(role_types)
+dplyr::glimpse(entsoeapi::role_types)
 
 }
 \keyword{datasets}

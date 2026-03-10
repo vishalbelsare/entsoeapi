@@ -4,3 +4,11 @@
 ^data-raw$
 sandbox/
 ^LICENSE\.md$
+^\.github$
+.claude/
+^doc$
+^Meta$
+^_pkgdown\.yml$
+^docs$
+^pkgdown$
+devel.R

@@ -8,8 +8,6 @@ outages_both(
   eic = NULL,
   period_start = lubridate::ymd(Sys.Date() + lubridate::days(x = 1L), tz = "CET"),
   period_end = lubridate::ymd(Sys.Date() + lubridate::days(x = 2L), tz = "CET"),
-  period_start_update = NULL,
-  period_end_update = NULL,
   doc_status = NULL,
   event_nature = NULL,
   tidy_output = TRUE,
@@ -24,16 +22,12 @@ i.e. CTA|DE(50Hertz), CTA|DE(Amprion), CTA|DE(TeneTGer),
 CTA|DE(TransnetBW),CTA|AT,CTA|LU but not per bidding zone.)}
 
 \item{period_start}{the starting date of the in-scope period
-in POSIXct or YYYY-MM-DD HH:MM:SS format}
+in POSIXct or YYYY-MM-DD HH:MM:SS format
+One year range limit applies}
 
 \item{period_end}{the ending date of the outage in-scope period
-in POSIXct or YYYY-MM-DD HH:MM:SS format}
-
-\item{period_start_update}{notification submission/update starting date
-in POSIXct or YYYY-MM-DD HH:MM:SS format}
-
-\item{period_end_update}{notification submission/update ending date
-in POSIXct or YYYY-MM-DD HH:MM:SS format}
+in POSIXct or YYYY-MM-DD HH:MM:SS format
+One year range limit applies}
 
 \item{doc_status}{Notification document status. "A05" for active,
 "A09" for cancelled and "A13" for withdrawn.
@@ -54,18 +48,18 @@ up to 3 years ahead. The "available capacity during the event"
 means the minimum available generation capacity during the period specified.
 }
 \examples{
-
-library(entsoeapi)
-library(lubridate)
-
-df <- outages_both(
-  eic                 = "10YFR-RTE------C",
-  period_start        = ymd(x = Sys.Date() + days(x = 1L), tz = "CET"),
-  period_end          = ymd(x = Sys.Date() + days(x = 2L), tz = "CET"),
-  period_start_update = ymd(x = Sys.Date() - days(x = 7L), tz = "CET"),
-  period_end_update   = ymd(x = Sys.Date(), tz = "CET")
+df <- entsoeapi::outages_both(
+  eic = "10YFR-RTE------C",
+  period_start = lubridate::ymd(
+    x = Sys.Date() + lubridate::days(x = 1L),
+    tz = "CET"
+  ),
+  period_end = lubridate::ymd(
+    x = Sys.Date() + lubridate::days(x = 2L),
+    tz = "CET"
+  )
 )
 
-str(df)
+dplyr::glimpse(df)
 
 }

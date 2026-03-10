@@ -6,17 +6,21 @@
 \usage{
 area_eic()
 }
+\value{
+A tibble of accordingly filtered EIC codes, which contains such columns as
+\code{EicCode}, \code{EicDisplayName}, \code{EicLongName}, \code{EicParent},
+\code{EicResponsibleParty}, \code{EicStatus}, \code{MarketParticipantPostalCode},
+\code{MarketParticipantIsoCountryCode}, \code{MarketParticipantVatCode},
+\code{EicTypeFunctionList} and \code{type}.
+}
 \description{
 This function downloads approved area Y
 energy identification codes from this site:
 https://www.entsoe.eu/data/energy-identification-codes-eic/eic-approved-codes
 }
 \examples{
+eic_area <- entsoeapi::area_eic()
 
-library(entsoeapi)
-
-eic_area <- area_eic()
-
-str(eic_area)
+dplyr::glimpse(eic_area)
 
 }

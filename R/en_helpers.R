@@ -1,3 +1,25 @@
+utils::globalVariables(
+  c(
+    "area_eic",
+    "doc_status",
+    "eic_code_status",
+    "eic_code_status_value",
+    "get_eiccodes",
+    "type",
+    "type_def"
+  )
+)
+
+
+#' @title
+#' instantiate a memory cache store for maximum 1 hour
+#'
+#' @importFrom cachem cache_mem
+#'
+#' @noRd
+mh <- cachem::cache_mem(max_age = 3600)
+
+
 #' @title
 #' Get Party_X Energy Identification Codes
 #'
@@ -7,22 +29,41 @@
 #' https://www.entsoe.eu/data/energy-identification-codes-eic/eic-approved-codes
 #' It covers market participants.
 #'
+#' @returns
+#' A tibble of accordingly filtered EIC codes, which contains such columns as
+#' `EicCode`, `EicDisplayName`, `EicLongName`, `EicParent`,
+#' `EicResponsibleParty`, `EicStatus`, `MarketParticipantPostalCode`,
+#' `MarketParticipantIsoCountryCode`, `MarketParticipantVatCode`,
+#' `EicTypeFunctionList` and `type`.
+#'
 #' @export
 #'
 #' @examples
+#' eic_party <- entsoeapi::party_eic()
 #'
-#' library(entsoeapi)
-#'
-#' eic_party <- party_eic()
-#'
-#' str(eic_party)
+#' dplyr::glimpse(eic_party)
 #'
 party_eic <- function() {
-  get_eiccodes(
-    f = "https://eepublicdownloads.entsoe.eu/eic-codes-csv/X_eiccodes.csv"
-  )
-}
+  # set the link of the csv file
+  f <- "X_eicCodes.csv"
 
+  # check if there is any cached value of 'party_eic_name'
+  cache_key <- "party_eic_df_key"
+  if (mh$exists(key = cache_key)) {
+    # recall res_df values
+    res_df <- mh$get(key = cache_key, missing = get_eiccodes(f = f))
+    cli::cli_alert_info("pulling {f} file from cache")
+  } else {
+    # download and import the csv file
+    cli::cli_alert_info("downloading {f} file ...")
+    res_df <- get_eiccodes(f = f)
+
+    # cache res_df as cache_key
+    mh$set(key = cache_key, value = res_df)
+  }
+
+  res_df
+}
 
 
 #' @title
@@ -33,22 +74,41 @@ party_eic <- function() {
 #' energy identification codes from this site:
 #' https://www.entsoe.eu/data/energy-identification-codes-eic/eic-approved-codes
 #'
+#' @returns
+#' A tibble of accordingly filtered EIC codes, which contains such columns as
+#' `EicCode`, `EicDisplayName`, `EicLongName`, `EicParent`,
+#' `EicResponsibleParty`, `EicStatus`, `MarketParticipantPostalCode`,
+#' `MarketParticipantIsoCountryCode`, `MarketParticipantVatCode`,
+#' `EicTypeFunctionList` and `type`.
+#'
 #' @export
 #'
 #' @examples
+#' eic_area <- entsoeapi::area_eic()
 #'
-#' library(entsoeapi)
-#'
-#' eic_area <- area_eic()
-#'
-#' str(eic_area)
+#' dplyr::glimpse(eic_area)
 #'
 area_eic <- function() {
-  get_eiccodes(
-    f = "https://eepublicdownloads.entsoe.eu/eic-codes-csv/Y_eiccodes.csv"
-  )
-}
+  # set the link of the csv file
+  f <- "Y_eicCodes.csv"
 
+  # check if there is any cached value of 'area_eic_name'
+  cache_key <- "area_eic_df_key"
+  if (mh$exists(key = cache_key)) {
+    # recall res_df values
+    res_df <- mh$get(key = cache_key, missing = get_eiccodes(f = f))
+    cli::cli_alert_info("pulling {f} file from cache")
+  } else {
+    # download and import the csv file
+    cli::cli_alert_info("downloading {f} file ...")
+    res_df <- get_eiccodes(f = f)
+
+    # cache res_df as cache_key
+    mh$set(key = cache_key, value = res_df)
+  }
+
+  res_df
+}
 
 
 #' @title
@@ -61,22 +121,41 @@ area_eic <- function() {
 #' An entity under balance responsibility where balance supplier change
 #' can take place and for which commercial business processes are defined.
 #'
+#' @returns
+#' A tibble of accordingly filtered EIC codes, which contains such columns as
+#' `EicCode`, `EicDisplayName`, `EicLongName`, `EicParent`,
+#' `EicResponsibleParty`, `EicStatus`, `MarketParticipantPostalCode`,
+#' `MarketParticipantIsoCountryCode`, `MarketParticipantVatCode`,
+#' `EicTypeFunctionList` and `type`.
+#'
 #' @export
 #'
 #' @examples
+#' eic_accounting_point <- entsoeapi::accounting_point_eic()
 #'
-#' library(entsoeapi)
-#'
-#' eic_accounting_point <- accounting_point_eic()
-#'
-#' str(eic_accounting_point)
+#' dplyr::glimpse(eic_accounting_point)
 #'
 accounting_point_eic <- function() {
-  get_eiccodes(
-    f = "https://eepublicdownloads.entsoe.eu/eic-codes-csv/Z_eiccodes.csv"
-  )
-}
+  # set the link of the csv file
+  f <- "Z_eicCodes.csv"
 
+  # check if there is any cached value of 'accounting_point_eic_name'
+  cache_key <- "accounting_point_eic_df_key"
+  if (mh$exists(key = cache_key)) {
+    # recall res_df values
+    res_df <- mh$get(key = cache_key, missing = get_eiccodes(f = f))
+    cli::cli_alert_info("pulling {f} file from cache")
+  } else {
+    # download and import the csv file
+    cli::cli_alert_info("downloading {f} file ...")
+    res_df <- get_eiccodes(f = f)
+
+    # cache res_df as cache_key
+    mh$set(key = cache_key, value = res_df)
+  }
+
+  res_df
+}
 
 
 #' @title
@@ -89,23 +168,41 @@ accounting_point_eic <- function() {
 #' It covers a transmission line that connects different areas
 #' excluding HVDC interconnectors.
 #'
+#' @returns
+#' A tibble of accordingly filtered EIC codes, which contains such columns as
+#' `EicCode`, `EicDisplayName`, `EicLongName`, `EicParent`,
+#' `EicResponsibleParty`, `EicStatus`, `MarketParticipantPostalCode`,
+#' `MarketParticipantIsoCountryCode`, `MarketParticipantVatCode`,
+#' `EicTypeFunctionList` and `type`.
 #'
 #' @export
 #'
 #' @examples
+#' eic_tie_line <- entsoeapi::tie_line_eic()
 #'
-#' library(entsoeapi)
-#'
-#' eic_tie_line <- tie_line_eic()
-#'
-#' str(eic_tie_line)
+#' dplyr::glimpse(eic_tie_line)
 #'
 tie_line_eic <- function() {
-  get_eiccodes(
-    f = "https://eepublicdownloads.entsoe.eu/eic-codes-csv/T_eiccodes.csv"
-  )
-}
+  # set the link of the csv file
+  f <- "T_eicCodes.csv"
 
+  # check if there is any cached value of 'tie_line_eic_name'
+  cache_key <- "tie_line_eic_df_key"
+  if (mh$exists(key = cache_key)) {
+    # recall res_df values
+    res_df <- mh$get(key = cache_key, missing = get_eiccodes(f = f))
+    cli::cli_alert_info("pulling {f} file from cache")
+  } else {
+    # download and import the csv file
+    cli::cli_alert_info("downloading {f} file ...")
+    res_df <- get_eiccodes(f = f)
+
+    # cache res_df as cache_key
+    mh$set(key = cache_key, value = res_df)
+  }
+
+  res_df
+}
 
 
 #' @title
@@ -117,22 +214,41 @@ tie_line_eic <- function() {
 #' https://www.entsoe.eu/data/energy-identification-codes-eic/eic-approved-codes
 #' It covers an endpoint, or an IT-system.
 #'
+#' @returns
+#' A tibble of accordingly filtered EIC codes, which contains such columns as
+#' `EicCode`, `EicDisplayName`, `EicLongName`, `EicParent`,
+#' `EicResponsibleParty`, `EicStatus`, `MarketParticipantPostalCode`,
+#' `MarketParticipantIsoCountryCode`, `MarketParticipantVatCode`,
+#' `EicTypeFunctionList` and `type`.
+#'
 #' @export
 #'
 #' @examples
+#' eic_location <- entsoeapi::location_eic()
 #'
-#' library(entsoeapi)
-#'
-#' eic_location <- location_eic()
-#'
-#' str(eic_location)
+#' dplyr::glimpse(eic_location)
 #'
 location_eic <- function() {
-  get_eiccodes(
-    f = "https://eepublicdownloads.entsoe.eu/eic-codes-csv/V_eiccodes.csv"
-  )
-}
+  # set the link of the csv file
+  f <- "V_eicCodes.csv"
 
+  # check if there is any cached value of 'location_eic_name'
+  cache_key <- "location_eic_df_key"
+  if (mh$exists(key = cache_key)) {
+    # recall res_df values
+    res_df <- mh$get(key = cache_key, missing = get_eiccodes(f = f))
+    cli::cli_alert_info("pulling {f} file from cache")
+  } else {
+    # download and import the csv file
+    cli::cli_alert_info("downloading {f} file ...")
+    res_df <- get_eiccodes(f = f)
+
+    # cache res_df as cache_key
+    mh$set(key = cache_key, value = res_df)
+  }
+
+  res_df
+}
 
 
 #' @title
@@ -145,22 +261,41 @@ location_eic <- function() {
 #' A resource that can either produce or consume energy
 #' and that is reported in a schedule.
 #'
+#' @returns
+#' A tibble of accordingly filtered EIC codes, which contains such columns as
+#' `EicCode`, `EicDisplayName`, `EicLongName`, `EicParent`,
+#' `EicResponsibleParty`, `EicStatus`, `MarketParticipantPostalCode`,
+#' `MarketParticipantIsoCountryCode`, `MarketParticipantVatCode`,
+#' `EicTypeFunctionList` and `type`.
+#'
 #' @export
 #'
 #' @examples
+#' eic_resource_object <- entsoeapi::resource_object_eic()
 #'
-#' library(entsoeapi)
-#'
-#' eic_resource_object <- resource_object_eic()
-#'
-#' str(eic_resource_object)
+#' dplyr::glimpse(eic_resource_object)
 #'
 resource_object_eic <- function() {
-  get_eiccodes(
-    f = "https://eepublicdownloads.entsoe.eu/eic-codes-csv/W_eiccodes.csv"
-  )
-}
+  # set the link of the csv file
+  f <- "W_eicCodes.csv"
 
+  # check if there is any cached value of 'resource_object_eic_name'
+  cache_key <- "resource_object_eic_df_key"
+  if (mh$exists(key = cache_key)) {
+    # recall res_df values
+    res_df <- mh$get(key = cache_key, missing = get_eiccodes(f = f))
+    cli::cli_alert_info("pulling {f} file from cache")
+  } else {
+    # download and import the csv file
+    cli::cli_alert_info("downloading {f} file ...")
+    res_df <- get_eiccodes(f = f)
+
+    # cache res_df as cache_key
+    mh$set(key = cache_key, value = res_df)
+  }
+
+  res_df
+}
 
 
 #' @title
@@ -178,53 +313,124 @@ resource_object_eic <- function() {
 #' They can be classified as normal outside substation,
 #' armoured substation and underground substation.
 #'
+#' @returns
+#' A tibble of accordingly filtered EIC codes, which contains such columns as
+#' `EicCode`, `EicDisplayName`, `EicLongName`, `EicParent`,
+#' `EicResponsibleParty`, `EicStatus`, `MarketParticipantPostalCode`,
+#' `MarketParticipantIsoCountryCode`, `MarketParticipantVatCode`,
+#' `EicTypeFunctionList` and `type`.
+#'
 #' @export
 #'
 #' @examples
+#' eic_substation <- entsoeapi::substation_eic()
 #'
-#' library(entsoeapi)
-#'
-#' eic_substation <- substation_eic()
-#'
-#' str(eic_substation)
+#' dplyr::glimpse(eic_substation)
 #'
 substation_eic <- function() {
-  get_eiccodes(
-    f = "https://eepublicdownloads.entsoe.eu/eic-codes-csv/A_eiccodes.csv"
-  )
-}
+  # set the link of the csv file
+  f <- "A_eicCodes.csv"
 
+  # check if there is any cached value of 'substation_eic_name'
+  cache_key <- "substation_eic_df_key"
+  if (mh$exists(key = cache_key)) {
+    # recall res_df values
+    res_df <- mh$get(key = cache_key, missing = get_eiccodes(f = f))
+    cli::cli_alert_info("pulling {f} file from cache")
+  } else {
+    # download and import the csv file
+    cli::cli_alert_info("downloading {f} file ...")
+    res_df <- get_eiccodes(f = f)
+
+    # cache res_df as cache_key
+    mh$set(key = cache_key, value = res_df)
+  }
+
+  res_df
+}
 
 
 #' @title
 #' Get all Approved Energy Identification Codes
 #'
 #' @description
-#' This function downloads approved all
+#' This function downloads all approved
 #' energy identification codes from this site:
 #' https://www.entsoe.eu/data/energy-identification-codes-eic/eic-approved-codes
 #' Further details are under:
 #' https://www.entsoe.eu/data/energy-identification-codes-eic/#eic-documentation
 #'
+#' @returns
+#' A tibble of accordingly filtered EIC codes, which contains such columns as
+#' `EicCode`, `EicDisplayName`, `EicLongName`, `EicParent`,
+#' `EicResponsibleParty`, `EicStatus`, `MarketParticipantPostalCode`,
+#' `MarketParticipantIsoCountryCode`, `MarketParticipantVatCode`,
+#' `EicTypeFunctionList` and `type`.
+#'
 #' @export
 #'
 #' @examples
+#' eic_all <- entsoeapi::all_approved_eic()
 #'
-#' library(entsoeapi)
-#'
-#' eic_all <- all_approved_eic()
-#'
-#' str(eic_all)
+#' dplyr::glimpse(eic_all)
 #'
 all_approved_eic <- function() {
-  list(party_eic(),
-       area_eic(),
-       accounting_point_eic(),
-       tie_line_eic(),
-       location_eic(),
-       resource_object_eic(),
-       substation_eic()) |>
+  list(
+    party_eic(),
+    area_eic(),
+    accounting_point_eic(),
+    tie_line_eic(),
+    location_eic(),
+    resource_object_eic(),
+    substation_eic()
+  ) |>
     data.table::rbindlist(use.names = TRUE, fill = TRUE) |>
     unique() |>
     tibble::as_tibble()
+}
+
+
+#' @title
+#' Get all Allocated Energy Identification Codes
+#'
+#' @description
+#' Beware, this is a REAL SLOW function, it runs for ages!
+#' Be patient!!
+#' This function downloads all allocated
+#' energy identification codes from this link:
+#' https://eepublicdownloads.blob.core.windows.net/
+#' cio-lio/xml/allocated-eic-codes.xml
+#' Further details are under:
+#' https://www.entsoe.eu/data/energy-identification-codes-eic/
+#'
+#' @returns
+#' A tibble of all allocated EIC codes, which contains such columns as
+#' `doc_status`, `doc_status_value`, `revision_number`, `created_date_time`,
+#' `eic_code`, `instance_component_attribute`, `long_name`, `display_name`,
+#' `last_request_date`, `eic_code_deactivation_requested_date_and_or_time_date`,
+#' `description`, `eic_code_market_participant_vat_code_name`,
+#' `eic_code_market_participant_acer_code_name` and
+#' `parent_market_document_mrid`
+#'
+#' @importFrom stats setNames
+#'
+#' @noRd
+all_allocated_eic <- function() {
+  cache_key <- "all_allocated_eic_df_key"
+
+  # check if there is any cached value of 'all_allocated_eic'
+  if (mh$exists(key = cache_key)) {
+    # recall res_df values
+    res_df <- mh$get(key = cache_key, missing = get_all_allocated_eic())
+    cli::cli_alert_info("pulling all_allocated_eic table from cache")
+  } else {
+    # download and import the csv file
+    cli::cli_alert_info("downloading all_allocated_eic table ...")
+    res_df <- get_all_allocated_eic()
+
+    # cache res_df as cache_key
+    mh$set(key = cache_key, value = res_df)
+  }
+
+  res_df
 }

@@ -16,9 +16,11 @@ gen_wind_solar_forecasts(
 \item{eic}{Energy Identification Code of the control area,
 bidding zone or country}
 
-\item{period_start}{POSIXct or YYYY-MM-DD HH:MM:SS format}
+\item{period_start}{POSIXct or YYYY-MM-DD HH:MM:SS format
+One year range limit applies}
 
-\item{period_end}{POSIXct or YYYY-MM-DD HH:MM:SS format}
+\item{period_end}{POSIXct or YYYY-MM-DD HH:MM:SS format
+One year range limit applies}
 
 \item{tidy_output}{Defaults to TRUE.
 If TRUE, then flatten nested tables.}
@@ -33,18 +35,15 @@ The elements of the result list are representing
 each related forecast time range.
 }
 \examples{
+df_list <- entsoeapi::gen_wind_solar_forecasts(
+  eic          = "10YFR-RTE------C",
+  period_start = lubridate::ymd(x = "2020-02-01", tz = "CET"),
+  period_end   = lubridate::ymd(x = "2020-03-01", tz = "CET"),
+  tidy_output  = TRUE
+)
 
-library(entsoeapi)
-library(lubridate)
-
-df_list <- gen_wind_solar_forecasts(eic          = "10YFR-RTE------C",
-                                    period_start = ymd(x = "2020-02-01",
-                                                       tz = "CET"),
-                                    period_end   = ymd(x = "2020-03-01",
-                                                       tz = "CET"),
-                                    tidy_output  = TRUE)
-str(df_list$`Day-ahead`)
-str(df_list$`Intraday`)
-str(df_list$`Current`)
+dplyr::glimpse(df_list$`Day-ahead`)
+dplyr::glimpse(df_list$`Intraday`)
+dplyr::glimpse(df_list$`Current`)
 
 }
